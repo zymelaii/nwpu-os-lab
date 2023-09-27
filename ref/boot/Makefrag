@@ -1,0 +1,14 @@
+#
+# makefile的boot部分，
+# 将会导入到根目录的makefile文件
+#
+
+$(BOOT_BIN) : boot/boot.asm
+	@echo + as bin $<
+	@mkdir -p $(@D)
+	@$(AS) -o $@ $<
+
+$(LOADER_BIN) : boot/loader.asm
+	@echo + as bin $<
+	@mkdir -p $(@D)
+	@$(AS) -o $@ $<
