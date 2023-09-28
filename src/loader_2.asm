@@ -55,23 +55,49 @@ _start:
     call  find_first_cluster
 
     add   ax, DeltaSectorNo     ; convert cluster index to sector index
+    push  ax                    ; backup sector index
     mov   bx, SectorBuffer
     mov   cx, 1
     call  read_sector
 
-    mov   ah, 0x0f
+    mov   ah, 0x0f              ; print first 10 chars
     mov   bx, .LC2
     mov   di, (80*4+0)*2
     call  direct_write_str
     shl   ax, 1
     add   di, ax
     mov   ah, 0x0f
-    mov   cx, byte [SectorBuffer+10]
+    mov   cl, byte [SectorBuffer+10]
     mov   byte [SectorBuffer+10], 0
     mov   bx, SectorBuffer
     call  direct_write_str
+    mov   byte [SectorBuffer+10], cl
 
-    mov   byte [SectorBuffer+10], cx
+    ; write "GOOD" to [511:515], 512bytes per sector
+    ; 1. write "G" to sectors[0][511]
+    ; 2. write "OOD" to sectors[0][0:4]
+
+    mov   byte [SectorBuffer+511], 'G'
+    pop   ax
+    mov   cx, ax                ; backup current cluster index
+    mov   bx, SectorBuffer
+    call  write_sector
+
+    sub   cx, DeltaSectorNo     ; get next cluster
+    mov   ax, cx
+    call  get_next_cluster
+    add   ax, DeltaSectorNo
+    push  ax
+    mov   bx, SectorBuffer
+    mov   cx, 1
+    call  read_sector
+
+    mov   byte [SectorBuffer+0], 'O'
+    mov   byte [SectorBuffer+1], 'O'
+    mov   byte [SectorBuffer+2], 'D'
+    pop   ax
+    mov   bx, SectorBuffer
+    call  write_sector
 
     jmp   $
  .LC0:
@@ -214,18 +240,14 @@ write_sector:                    ; void write_sector(sector: ax, buf: bx)
     pusha
  .entry:
     mov   si, BufferPacket
-    mov   al, 0
-    mov   dl, [BS_DrvNum]
-    mov   ah, 0x43              ; extended write
-
     mov   byte [si+0], 0x10     ; size of DAP
     mov   byte [si+1], 0x00     ; unused
-    mov   word [si+2], cx       ; number of sectors to be read
+    mov   word [si+2], 1        ; number of sectors to be wrote
     mov   word [si+4], bx       ; offset of memory buffer
     mov   word [si+6], ds       ; segment of memory buffer
-    mov   word [si+8], ax       ; absolute number of the start of the sectors to be read (LBA)
+    mov   word [si+8], ax       ; absolute number of the start of the sectors to be wrote (LBA)
     mov   dl, [BS_DrvNum]       ; driver index (1st HDD is 80h)
-    mov   ah, 42h               ; extended read
+    mov   ah, 0x43              ; extended write
     int   13h
  .exit:
     jc    .failed               ; cf = 1 -> failed
@@ -375,11 +397,6 @@ print_file_clusters:            ; int print_file_clusters(file: si)
     add   [bp-8], ax
  .tranverse.body:
     inc   word [bp-2]
-    mov   ax, dx
-    add   ax, DeltaSectorNo     ; offset cluster index with DeltaSectorNo to get the sector index
-    mov   bx, SectorBuffer
-    mov   cx, 1
-    call  read_sector
     mov   ax, dx
     call  get_next_cluster
     mov   dx, ax
