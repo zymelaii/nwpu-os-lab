@@ -42,12 +42,13 @@ run: boot_$(TARGET).img
 
 run-debug: boot_$(TARGET).img
 	@echo - Run $< '(DEBUG)'
-	@qemu-system-i386 -boot order=c -drive file=$<,format=raw -s -S
+	@qemu-system-i386 -boot order=c -drive file=$<,format=raw -s -S -display curses
 
 gdb:
 	@echo - Run GDB
 	@gdb -ex 'set tdesc filename ../misc/gdb/target.xml' \
-		 -ex 'target remote localhost:1234' \
+		 -ex 'alias connect = target remote localhost:1234' \
+		 -ex 'connect' \
 		 -ex 'layout asm' \
 		 -ex 'b *0x00090400' \
 		 -ex 'c'
