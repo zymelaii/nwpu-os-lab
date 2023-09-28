@@ -51,11 +51,35 @@ _start:
     mov   si, TextFileName
     call  print_file_clusters
 
+    mov   si, TextFileName
+    call  find_first_cluster
+
+    add   ax, DeltaSectorNo     ; convert cluster index to sector index
+    mov   bx, SectorBuffer
+    mov   cx, 1
+    call  read_sector
+
+    mov   ah, 0x0f
+    mov   bx, .LC2
+    mov   di, (80*4+0)*2
+    call  direct_write_str
+    shl   ax, 1
+    add   di, ax
+    mov   ah, 0x0f
+    mov   cx, byte [SectorBuffer+10]
+    mov   byte [SectorBuffer+10], 0
+    mov   bx, SectorBuffer
+    call  direct_write_str
+
+    mov   byte [SectorBuffer+10], cx
+
     jmp   $
  .LC0:
     db    "This is xqd's loader",0
  .LC1:
     db    "DONE",0
+ .LC2:
+    db    "FIRST 10 CHARS IN aA1.txt: ",0
 
 direct_write_int:               ; int direct_write_int(number: bx)
     push  bp
@@ -183,6 +207,79 @@ read_sector:                    ; void read_sector(first_sector: ax, total_secto
     ret
  .failed:
     call  panic
+
+write_sector:                    ; void write_sector(sector: ax, buf: bx)
+    push  bp
+    mov   bp, sp
+    pusha
+ .entry:
+    mov   si, BufferPacket
+    mov   al, 0
+    mov   dl, [BS_DrvNum]
+    mov   ah, 0x43              ; extended write
+
+    mov   byte [si+0], 0x10     ; size of DAP
+    mov   byte [si+1], 0x00     ; unused
+    mov   word [si+2], cx       ; number of sectors to be read
+    mov   word [si+4], bx       ; offset of memory buffer
+    mov   word [si+6], ds       ; segment of memory buffer
+    mov   word [si+8], ax       ; absolute number of the start of the sectors to be read (LBA)
+    mov   dl, [BS_DrvNum]       ; driver index (1st HDD is 80h)
+    mov   ah, 42h               ; extended read
+    int   13h
+ .exit:
+    jc    .failed               ; cf = 1 -> failed
+    popa
+    pop   bp
+    ret
+ .failed:
+    call  panic
+
+find_first_cluster:             ; int find_first_cluster(file: si)
+    push  bp
+    mov   bp, sp
+    sub   sp, 6
+    pusha
+ .reset:
+    mov   word [bp-2], 19       ; current root dir sector index
+    mov   word [bp-4], 14       ; left root dir sectors
+ .find:
+   ; read next sector
+    mov   ax, [bp-2]
+    mov   bx, SectorBuffer
+    mov   cx, 1
+    call  read_sector
+ .cmp.entry:
+    mov   di, SectorBuffer
+    mov   dx, 10h               ; each sector has a maximum of 16 dir entries
+ .cmp:
+    call  strcmp
+    cmp   ax, 1
+    je    .found
+    dec   dx
+    test  dx, dx
+    jz    .next_sector
+    add   di, 20h               ; 32 bytes per dir entry
+    jmp   .cmp
+ .next_sector:
+    inc   word [bp-2]
+    dec   word [bp-4]
+    cmp   word [bp-4], 0
+    jz    .failed
+    jmp   .find
+ .failed:
+    mov   word [bp-2], 0
+    jmp   .done
+ .found:
+    add   di, 1ah               ; offset 0x1a to get the first cluster index
+    mov   dx, word [di]         ; dx <- first cluster index
+    mov   word [bp-2], dx
+ .done:
+    popa
+    mov   ax, word [bp-2]
+    mov   sp, bp
+    pop   bp
+    ret
 
 print_file_clusters:            ; int print_file_clusters(file: si)
     push  bp
