@@ -1,0 +1,34 @@
+#
+# makefile的kernel部分，
+# 将会导入到根目录的makefile文件
+#
+
+OBJDIRS 	+= kern
+
+KERN_ENTRY_ADDR	:= 0x30400
+KERN_SRCFILES:=	kern/kernel.asm		\
+		kern/kprintf.asm	\
+		kern/start.c		\
+		kern/cmatrix.c		\
+		lib/terminal.c		\
+		lib/string.c	
+
+KERN_OBJFILES	:= $(patsubst %.c, $(OBJDIR)/%.o, $(KERN_SRCFILES))
+KERN_OBJFILES	:= $(patsubst %.asm, $(OBJDIR)/%.o, $(KERN_OBJFILES))
+
+$(OBJDIR)/kern/%.o: kern/%.c $(OBJDIR)/.vars.CFLAGS
+	@echo + cc $<
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/kern/%.o: kern/%.asm $(OBJDIR)/.vars.CFLAGS
+	@echo + as obj $<
+	@mkdir -p $(@D)
+	@$(AS) -f elf -o $@ $<
+
+$(KERN_BIN) $(KERN_DBG): $(KERN_OBJFILES) $(OBJDIR)/.vars.LDFLAGS
+	@echo + ld $@
+	@$(LD) $(LDFLAGS) -s -Ttext $(KERN_ENTRY_ADDR) \
+		-o $(KERN_BIN) $(KERN_OBJFILES)
+	@$(LD) $(LDFLAGS) -Ttext $(KERN_ENTRY_ADDR) \
+		-o $(KERN_DBG) $(KERN_OBJFILES)
