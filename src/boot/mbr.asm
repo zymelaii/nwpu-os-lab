@@ -1,6 +1,7 @@
-; Struct for Partition Table Entry
+[section .data]
+
 struc PTEntry
-    .status     resb    1 ; bit 7 set = active
+    .status     resb    1
     .startCHS   resb    3
     .type       resb    1
     .endCHS     resb    3
@@ -8,92 +9,232 @@ struc PTEntry
     .numSectors resb    4
 endstruc
 
-PTOffset        equ 446
-OSBOOTSegment   equ 0000h
-OSBOOTOffset    equ 7c00h
-MBROffset       equ 0800h
-PART_TYPE_EXT   equ 5
+PART_TABLE_OFFSET   equ 446
+MBR_SEGMENT         equ 0x0000
+BOOT_SEGMENT        equ 0x0000
+BOOT_OFFSET         equ 0x7c00
+MBR_OFFSET          equ 0x0800
+PART_TYPE_EXT       equ 5
+TOTAL_PRI_PART      equ 4
 
-org MBROffset
+[section .text]
 
-START:
-    cli ; turn off interrupt for safety, though in most cases this is trivial
-    xor     ax, ax
-    mov     ds, ax
-    mov     es, ax
-    mov     ss, ax
-    mov     sp, 7c00h
-    ; copy self to another space, since the boot expects it to be at 0x7c00 where we are now
-    mov     cx, 256
-    mov     si, 7c00h
-    mov     di, MBROffset
-    rep movsw ; copy cx words from [si] to [di]
-    jmp     0:REAL_START ; mbr is copied, use an explicit jump to switch the IP(Instruction Pointer)
-REAL_START:
-    sti ; turn on interrupt, or BIOS INTs cannot work
-    ; Save boot drive number passed from BIOS
-    mov     [BOOT_DRIVE_NUMBER], dl
+    org MBR_OFFSET
+_entry:
+    ; turn off ints
+    cli
+    ; reset
+    xor   ax, ax
+    mov   ds, ax
+    mov   es, ax
+    mov   ss, ax
+    mov   sp, BOOT_OFFSET
+    ; copy self to boot addr, 512B in total
+    mov   cx, 256
+    mov   si, BOOT_OFFSET
+    mov   di, MBR_OFFSET
+    rep movsw
+    jmp   MBR_SEGMENT:mbr_main
 
-    ; Clear screen
-    mov     ax, 0600h
-    mov     bx, 0700h
-    mov     cx, 0       ; LeftTop(row, col) = (0, 0)
-    mov     dx, 184fh   ; RightBottom(row, col) = (24, 79)
-    int     10h
-    ; Reset Cursor to (0, 0)
-    mov     ax, 0200h
-    mov     bx, 0
-    mov     dx, 0000h
-    int     10h
-    ; Print "Find partition"
-    mov    ax, 01301h                       ; AH = 13,  AL = 01h
-    mov    bx, 000Fh                        ; 页号为0(BH = 0) 黑底白字(BL = 0Bh,高亮)
-    mov    cx, MSG_FindingEnd-MSG_Finding   ; CX = 串长度
-    xor    dx, dx                           ; DX = (起始行|列)
-    mov    bp, MSG_Finding                  ; ES:BP = 串地址
-    int    10h                              ; 10h 号中断
-; TODO1.3&1.4: Add/Modify code below for parsing Partition Table & finding the first active primary partition
-    mov     cx, MSG_NotFoundEnd-MSG_NotFound
-    mov     bp, MSG_NotFound
-    jmp     EXIT_FAIL
-LOAD_OSBOOT:
-; TODO1.4: You need to set INT13H's DAP to read the boot program into memory
-    int     13h
-    mov     cx, MSG_ReadFailureEnd-MSG_ReadFailure
-    mov     bp, MSG_ReadFailure
-    jc      EXIT_FAIL
-; TODO1.4: You need to ensure that `DS:SI` points to the Partition Table Entry associated
-;       with the boot you are going to load at this point
-    jmp     OSBOOTSegment:OSBOOTOffset
+mbr_main:
+    ; turn on ints
+    sti
+    ; save boot drive index
+    mov [BOOT_DRIVE], dl
+    ; clear screen
+    mov   ax, 0x0600
+    mov   bx, 0x0700
+    mov   cx, 0
+    mov   dx, 0x184f
+    int   10h
+    ; move cursor to (0,0)
+    mov   ax, 0x0200
+    mov   bx, 0
+    mov   dx, 0
+    int   10h
+    ; print "Find partition"
+    push  MSG_FOUND
+    push  0x0f
+    push  0
+    call  direct_write_str
+    add   sp, 6
+ .visit_main_part.entry:
+    ; read mbr to memory
+    mov   ah, 02h
+    mov   al, 1                 ; total sectors
+    mov   ch, 0                 ; cylinder 0
+    mov   dh, 0                 ; head 0
+    mov   cl, 1                 ; sector 1
+    xor   dx, dx
+    mov   dl, [BOOT_DRIVE]      ; boot drive -> dl
+    mov   bx, MBR_OFFSET+512    ; use 0x0a00~??? as buffer
+    int   13h
+    ; move to partion table addr
+    add   bx, PART_TABLE_OFFSET
+    mov   si, bx
+    mov   cl, 0
+    mov   dx, 0x0300
+    ; print table head
+    push  MSG_TABLE_HEAD
+    push  0x02
+    push  0x0200
+    call  direct_write_str
+    add   sp, 6
+ .visit_main_part.loop:
+    ; print index
+    xor   ch, ch
+    push  cx
+    push  0
+    push  0x0e
+    push  dx
+    call  direct_write_u32
+    add   sp, 8
+    add   dl, 3
+    ; handle PTEntry.status
+    mov   bl, byte [si]
+    xor   bh, bh
+    push  bx
+    push  0
+    push  0x0f
+    push  dx
+    call  direct_write_u32
+    add   sp, 8
+    add   dl, 7
+    ; handle first active partion
+    cmp   byte [FIRST_ACTIVE_PART], -1  ; first parition not found
+    jne   .skip
+    and   bl, 0x80                      ; is bootable
+    test  bl, bl
+    jz    .skip
+    mov   bl, [si+PTEntry.type]         ; is primary
+    cmp   bl, PART_TYPE_EXT
+    je    .skip
+    mov   [FIRST_ACTIVE_PART], cl       ; found
+ .skip:
+    ; handle PTEntry.startLBA
+    mov   ax, word [si+PTEntry.startLBA]
+    push  ax
+    mov   ax, word [si+PTEntry.startLBA+2]
+    push  ax
+    push  0x0f
+    push  dx
+    call  direct_write_u32
+    add   sp, 8
+    xor   dl, dl
+    inc   dh
+ .visit_main_part.iter:
+    add   si, 16
+    inc   cl
+    cmp   cl, TOTAL_PRI_PART
+    jne   .visit_main_part.loop
+ .visit_main_part.done:
+    mov   dx, 0x0800
+    push  MSG_BOOT_PART
+    push  0x0f
+    push  dx
+    call  direct_write_str
+    add   sp, 6
+    add   dl, al
+    xor   ax, ax
+    mov   al, [FIRST_ACTIVE_PART]
+    push  ax
+    push  0
+    push  0x0f
+    push  dx
+    call  direct_write_u32
+    add   sp, 8
+ .load:
+    ; TODO: read boot to memory
+    jmp   $
+    jc    .fail
 
-EXIT_FAIL:
-    mov    ax, 01301h
-    mov    bx, 000ch
-    mov    dx, 0100h
-    int    10h
-    jmp $
+ .done:
+    jmp   BOOT_SEGMENT:BOOT_OFFSET
 
-; Data Address Packet
-DAPS:
-    DB 0x10                     ; size of packet
-    DB 0                        ; Always 0
-    D_CL    DW 1                ; number of sectors to transfer
-    D_BX    DW OSBOOTOffset     ; transfer buffer (16 bit segment:16 bit offset)
-    D_ES    DW OSBOOTSegment
-    LBA_Lo  DD 1                ; lower 32-bits of 48-bit starting LBA
-    LBA_Hi  DD 0                ; upper 32-bits of 48-bit starting LBAs
+ .fail:
+    jmp    $
 
-; -----------------
-BOOT_DRIVE_NUMBER   db 00h
+; i16 direct_write_u32(i16 pos, i16 style, i16 hi_val, i16 lo_val)
+; WARNING: hi_val:lo_val must le 0x9ffff
+direct_write_u32:
+    push  bp
+    mov   bp, sp
+    sub   sp, 12
+    pusha
+ .entry:
+    mov   di, bp
+    sub   di, 2
+    mov   cx, di
+    mov   dx, [bp+8]
+    mov   ax, [bp+10]
+    mov   bx, 10
+ .loop:
+    div   bx
+    dec   di
+    add   dl, '0'
+    mov   [di], dl
+    xor   dx, dx
+    test  ax, ax
+    jnz   .loop
+ .done:
+    mov   ah, 13h
+    sub   cx, di
+    mov   [bp-2], cx
+    mov   bh, 0
+    mov   bl, [bp+6]
+    mov   dx, [bp+4]
+    mov   bp, di
+    int   10h
+ .exit:
+    popa
+    mov   ax, [bp-2]
+    mov   sp, bp
+    pop   bp
+    ret
 
-; -----------------
-MSG_Finding:        db "FindPart"
-MSG_FindingEnd:
-MSG_NotFound:       db "NoPart"
-MSG_NotFoundEnd:
-MSG_ReadFailure:    db "RdFail"
-MSG_ReadFailureEnd:
-; ----------------- Padding ----------------
-times 446 -($-$$) db 0  ; MBR[0:445] = Boot code
-                        ; MBR[446:509] = Partition Table
-                        ; MBR[510:511] = 0x55aa
+; i16 direct_write_str(i16 pos, i16 style, i16 str)
+direct_write_str:
+    push  bp
+    mov   bp, sp
+    sub   sp, 2
+    pusha
+ .entry:
+    mov   cx, 0
+    mov   si, [bp+8]
+ .loop:
+    mov   al, [si]
+    test  al, al
+    jz    .done
+    inc   si
+    inc   cx
+    jmp   .loop
+ .done:
+    mov   [bp-2], cx
+    mov   ah, 13h
+    mov   bh, 0
+    mov   bl, [bp+6]
+    mov   dx, [bp+4]
+    mov   bp, [bp+8]
+    int   10h
+ .exit:
+    popa
+    mov   ax, [bp-2]
+    mov   sp, bp
+    pop   bp
+    ret
+
+; save first active partion
+FIRST_ACTIVE_PART:  db -1
+BOOT_DRIVE:         db 0
+
+; string literals
+MSG_FOUND:          db "FindPart",0
+MSG_NOT_FOUND:      db "NoPart",0
+MSG_RDFAIL:         db "RdFail",0
+MSG_TABLE_HEAD:     db "NO STATUS START_LBA",0
+MSG_BOOT_PART:      db "FIRST BOOTABLE PRIMARY PARTION: ",0
+
+; padding
+times 446-($-$$)    db 0    ; [  0,446) = Boot code
+                            ; [446,510) = Partition Table
+                            ; [510,512) = 0x55aa
