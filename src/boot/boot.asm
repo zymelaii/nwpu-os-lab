@@ -91,6 +91,7 @@ boot_main:
     ; read mbr to buffer
     mov   ax, 0x0201
     mov   cx, 0x0001
+    mov   dh, 0
     mov   dl, [BS_DrvNum]
     mov   bx, OffsetOfBuffer
     int   13h
