@@ -20,6 +20,8 @@ CFLAGS += -static -m32 -fno-pie
 CFLAGS += -g
 CFLAGS += -Wall -Werror
 
+ASFLAGS :=
+
 LDFLAGS	:= -m elf_i386
 
 OBJDIRS	:=
@@ -41,12 +43,15 @@ include kern/Makefrag
 all: $(IMAGE)
 .PHONY: all
 
-$(IMAGE): $(IMAGE_DEPS)
-	@if [ ! -f "$(IMAGE)" ]; then cp -f -v $(PARTED_IMAGE) $(IMAGE) ; fi
-	@bash ./install_image.sh $(MBR_BIN) $(BOOT_BIN) $(LOADER_BIN) $(KERN_BIN) $(IMAGE)
+$(PARTED_IMAGE): generate_image.sh part1.sfdisk
+	@bash $<
+
+$(IMAGE): install_image.sh $(IMAGE_DEPS)
+	@cp -f -v $(PARTED_IMAGE) $(IMAGE)
+	@bash $< $(MBR_BIN) $(BOOT_BIN) $(LOADER_BIN) $(KERN_BIN) $(IMAGE)
 
 clean:
-	@rm -rf $(OBJDIR)
+	@rm -rf $(OBJDIR) *.img
 .PHONY: clean
 
 run: $(IMAGE)
@@ -54,15 +59,19 @@ run: $(IMAGE)
 	-boot order=a					\
 	-drive file=$(IMAGE),format=raw	\
 	-s -S 							\
-	-display curses
-.PHONY: gdb
+	-display curses -m 128m
+.PHONY: run
 
 gdb: $(KERN_DBG)
-	@gdb										\
+	@gdb -q -nx									\
 	-x  '../misc/gdb/connect-qemu.gdb'			\
+	-x  '../misc/gdb/instr-level.gdb'			\
+	-ix '../misc/gdb/gdb_init_real_mode.txt'	\
 	-ex 'set pagination off' 					\
 	-ex 'set confirm off'						\
+	-ex 'set disassembly-flavor att'			\
 	-ex 'layout asm' 							\
+	-ex 'tui reg general'						\
 	-ex 'connect-qemu'							\
 	-ex 'file $(KERN_DBG)'
 .PHONY: gdb

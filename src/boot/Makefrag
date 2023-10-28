@@ -7,7 +7,7 @@ OBJDIRS 	+= boot
 
 LOADER_SRCFILES	:= boot/loader.asm	\
 		boot/loadkernel.c	\
-		lib/string.c		
+		lib/string.c
 
 LOADER_OBJFILES	:= $(patsubst %.c, $(OBJDIR)/%.o, $(LOADER_SRCFILES))
 LOADER_OBJFILES	:= $(patsubst %.asm, $(OBJDIR)/%.o, $(LOADER_OBJFILES))
@@ -21,17 +21,17 @@ $(OBJDIR)/boot/%.o: boot/%.c $(OBJDIR)/.vars.CFLAGS
 $(OBJDIR)/boot/%.o: boot/%.asm
 	@echo + as obj $<
 	@mkdir -p $(@D)
-	@$(AS) -f elf -o $@ $<
+	@$(AS) $(ASFLAGS) -f elf -o $@ $<
 
 $(MBR_BIN): boot/mbr.asm
 	@echo + as bin $<
 	@mkdir -p $(@D)
-	@$(AS) -o $@ $<
+	@$(AS) $(ASFLAGS) -o $@ $<
 
 $(BOOT_BIN): boot/boot.asm
 	@echo + as bin $<
 	@mkdir -p $(@D)
-	@$(AS) -o $@ $<
+	@$(AS) $(ASFLAGS) -o $@ $<
 
 $(LOADER_BIN): $(LOADER_OBJFILES) $(LOADER_LINKER)
 	@echo + ld $@
