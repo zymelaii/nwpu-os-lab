@@ -62,4 +62,4 @@ dkms.conf
 /build
 obj/
 .lock
-.img
+*.img
