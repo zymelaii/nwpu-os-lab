@@ -2,6 +2,7 @@
 #include "protect.h"
 #include "string.h"
 #include "terminal.h"
+#include "cmatrix.h"
 
 u8 gdt_ptr[6]; /* 0~15:Limit  16~47:Base */
 DESCRIPTOR gdt[GDT_SIZE];
@@ -18,13 +19,15 @@ void cstart()
 	u32 *p_gdt_base = (u32 *)(&gdt_ptr[2]);
 	*p_gdt_limit = GDT_SIZE * sizeof(DESCRIPTOR) - 1;
 	*p_gdt_base = (u32)&gdt;
-	
+
 	clear_screen();
+
 	// 在终端的第0行依次打出N(黑底白字)，W(黑底蓝字)，P(白底蓝字)，U(白底黑字)
 	kprintf(TERMINAL_POS(0, 0),
 		"N%fW%bP%fU", LIGHT_BLUE, WHITE, BLACK);
+
 	// 在终端的第1行依次输出白底绿紫相间的字符
-	for (char *s = "even old new york once Amsterdam", 
+	for (char *s = "even old new york once Amsterdam",
 					*st = s ; *s ; s += 4) {
 		kprintf(TERMINAL_POS(1, s - st),
 			"%b%f%c%f%c%f%c%f%c",
@@ -32,4 +35,6 @@ void cstart()
 				FUCHUSIA, *(s + 1), GREEN,
 				*(s + 2), FUCHUSIA, *(s + 3));
 	}
+
+	cmatrix_start();
 }

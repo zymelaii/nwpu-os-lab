@@ -57,11 +57,24 @@ _start:
 	; 把 esp 从 LOADER 挪到 KERNEL
 	mov	esp, StackTop	; 堆栈在 bss 段中
 
+	mov ah, 0x0f
+	mov al, 'k'
+	mov [gs:80], ax
+	mov al, 'e'
+	mov [gs:82], ax
+	mov al, 'r'
+	mov [gs:84], ax
+	mov al, 'n'
+	mov [gs:86], ax
+	mov al, 'e'
+	mov [gs:88], ax
+	mov al, 'l'
+	mov [gs:90], ax
+
 	sgdt	[gdt_ptr]	; cstart() 中将会用到 gdt_ptr
 	call	cstart		; 在此函数中改变了gdt_ptr，让它指向新的GDT
 	lgdt	[gdt_ptr]	; 使用新的GDT
 
 	jmp	SELECTOR_KERNEL_CS:csinit
 csinit:		; “这个跳转指令强制使用刚刚初始化的结构”——<<OS:D&I 2nd>> P90.
-
 	hlt

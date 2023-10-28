@@ -20,7 +20,7 @@
     BS_BootSig        DB 29h            ; 扩展引导标记 (29h)
     BS_VolID          DD 0              ; 卷序列号
     BS_VolLab         DB 'OrangeS0.02'  ; 卷标, 必须 11 个字节
-    BS_FileSysType    DB 'FAT12   '     ; 文件系统类型, 必须 8个字节  
+    BS_FileSysType    DB 'FAT12   '     ; 文件系统类型, 必须 8个字节
 
     ; 文件系统信息存放完毕后后面的内容就可以自由调整了，撒花！
 
@@ -42,6 +42,7 @@ DeltaSectorNo             equ 31
 ;----------------------------------------------------------------------------
 LeftRootDirSectors        dw    RootDirSectors          ; 还未搜索的根目录扇区数
 RootDirSectorNow          dw    SectorNoOfRootDirectory ; 目前正在搜索的根目录扇区
+StartLBA                  dw    4096
 
 ;============================================================================
 ;字符串
@@ -78,8 +79,8 @@ DispStr:
     mov    ax, MessageLength
     mul    dh
     add    ax, BootMessage
-    mov    bp, ax    
-    mov    ax, ds        
+    mov    bp, ax
+    mov    ax, ds
     mov    es, ax            ; ES:BP = 串地址
     mov    cx, MessageLength ; CX = 串长度
     mov    ax, 01301h        ; AH = 13,  AL = 01h
@@ -106,7 +107,7 @@ DispDot:
 
     popa
     ret
-    
+
 ;----------------------------------------------------------------------------
 ; 函数名: ReadSector
 ;----------------------------------------------------------------------------
@@ -124,7 +125,7 @@ DispDot:
 ;        long long start_sectors;          /* 从哪个 sector 开始读 */
 ;        long long *l_buffer;              /* 64 位的 buffer address 这个我们不管！！！*/
 ;    } buffer;
-;    需要注意的是，buffer参数的高4位填充的是段地址(es)，低4位填充的是偏移量(bx)    
+;    需要注意的是，buffer参数的高4位填充的是段地址(es)，低4位填充的是偏移量(bx)
 ;
 ;    int 13h扩展读功能要求
 ;    ah = 0x42
@@ -134,12 +135,12 @@ DispDot:
 ReadSector:
     pusha
 
-    push   dword 0        
+    push   dword 0
     push   word 0
     push   word ax            ; start_sectors
     push   word es
     push   word bx            ; buffer
-    push   word cx            ; sectors           
+    push   word cx            ; sectors
     push   word 10h           ; buffer_packet_size
 
     mov    si, sp             ; si <- 指向buffer的地址
@@ -147,7 +148,7 @@ ReadSector:
     mov    ah, 42h            ; 扩展读
     int    13h
     jc     Panic              ; 如果cf位置1，就意味着读入错误，这个时候建议直接开摆
-    
+
     add    sp, 10h
 
     popa
@@ -175,6 +176,7 @@ GetNextCluster:
                               ; dx <- 余数 (基地址在扇区内的偏移)
     mov    bx, 0              ; bx <- 0 于是, es:bx = BaseOfKernelFile:0
     add    ax, SectorNoOfFAT1 ; 此句之后的 ax 就是FAT项所在的扇区号
+    add    ax, [StartLBA]
     mov    cx, 2              ; 读取FAT项所在的扇区, 一次读两个, 避免在边界
     call   ReadSector         ; 发生错误, 因为一个FAT项可能跨越两个扇区
 
@@ -225,7 +227,7 @@ StringCmp:
 ;----------------------------------------------------------------------------
 ; 作用:
 ;    将kernel的elf文件加载到BaseOfKernelFile:OffsetOfKernelFile
-LoadKernelFile: 
+LoadKernelFile:
     pusha
     push   es
 
@@ -245,11 +247,12 @@ LoadKernelFile:
     mov    ah, 0                 ; ┓
     mov    dl, [BS_DrvNum]       ; ┣ 硬盘复位
     int    13h                   ; ┛
-    
+
 ; 下面在 A 盘的根目录寻找 KERNEL.BIN
 .FindKernelInRootDir:
     mov    ax, [RootDirSectorNow]   ; ax <- 现在正在搜索的扇区号
-    mov    bx, OffsetOfKernelFile   ; es:bx = BaseOfKernelFile:OffsetOfKernelFile  
+    add    ax, [StartLBA]
+    mov    bx, OffsetOfKernelFile   ; es:bx = BaseOfKernelFile:OffsetOfKernelFile
     mov    cx, 1
     call   ReadSector
 
@@ -262,7 +265,7 @@ LoadKernelFile:
     cmp    ax, 1
     jz     .KernelFound             ; ax == 1 -> 比对成了
     dec    dx
-    cmp    dx, 0                 
+    cmp    dx, 0
     jz     .GotoNextRootDirSector   ; 该扇区的所有目录项都探索完了，去探索下一个扇区
     add    di, 20h                  ; 32 -> 目录项大小
     jmp    .CompareFilename
@@ -277,12 +280,13 @@ LoadKernelFile:
 .KernelFound:                      ; 找到 KERNEL.BIN 后便来到这里继续
     add    di, 01Ah                ; 0x1a = 28 这个 28 在目录项里偏移量对应的数据是起始簇号（RTFM）
     mov    dx, word [es:di]        ; 起始簇号占2字节，读入到dx里
-    mov    bx, OffsetOfKernelFile  ; es:bx = BaseOfKernelFile:OffsetOfKernelFile  
+    mov    bx, OffsetOfKernelFile  ; es:bx = BaseOfKernelFile:OffsetOfKernelFile
 
 .LoadKernel:
     call   DispDot
     mov    ax, dx                  ; ax <- 数据区簇号
     add    ax, DeltaSectorNo       ; 数据区的簇号需要加上一个偏移量才能得到真正的扇区号
+    add    ax, [StartLBA]
     mov    cx, 1                   ; 一个簇就仅有一个扇区
     call   ReadSector
     mov    ax, dx                  ; ax <- 数据区簇号（在之前ax = 数据区簇号+偏移量）
@@ -295,7 +299,7 @@ LoadKernelFile:
 .LoadFinished:
     mov    dh, 1                   ; "Ready."
     call   DispStr                 ; 显示字符串
-    
+
     pop    es
     popa
     ret

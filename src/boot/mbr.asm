@@ -1,8 +1,6 @@
 ; NOTE: some ops are combined to reduce the length of the mbr prog
 ; NOTE: a more detailed version can be found at commit 146b240
 
-[section .data]
-
 struc PTEntry
     .status     resb    1
     .startCHS   resb    3
@@ -19,8 +17,6 @@ BOOT_OFFSET         equ 0x7c00
 MBR_OFFSET          equ 0x0800
 PART_TYPE_EXT       equ 5
 TOTAL_PRI_PART      equ 4
-
-[section .text]
 
     org MBR_OFFSET
 _entry:
@@ -77,7 +73,7 @@ mbr_main:
     call  direct_write_u32
     add   dl, 3
     ; handle PTEntry.status
-    mov   bl, byte [si]
+    mov   bl, [si]
     ; handle PTEntry.type
     mov   al, [si+PTEntry.type]
     xor   ah, ah
@@ -88,22 +84,22 @@ mbr_main:
     add   dl, 5
     ; handle PTEntry.startLBA
     push  word [si+PTEntry.startLBA]
-    push  0                             ; [unsafe] ignore hi-word
+    push  0                                 ; [unsafe] ignore hi-word
     push  dx
     call  direct_write_u32
     xor   dl, dl
     inc   dh
     ; handle first active partion
-    cmp   byte [FIRST_ACTIVE_PART], -1  ; first parition not found
+    cmp   byte [SELECTED_ACTIVE_PART], -1   ; first parition not found
     jne   .visit_main_part.iter
-    and   bl, 0x80                      ; is bootable
+    and   bl, 0x80                          ; is bootable
     test  bl, bl
     jz    .visit_main_part.iter
-    cmp   al, PART_TYPE_EXT             ; is primary
+    cmp   al, PART_TYPE_EXT                 ; is primary
     je    .visit_main_part.iter
-    mov   [FIRST_ACTIVE_PART], cl       ; found
-    mov   ax, [si+PTEntry.startLBA]     ; update start LBA
-    mov   [PACKET+8], ax                ; [unsafe] ignore hi-word
+    mov   [SELECTED_ACTIVE_PART], cl        ; found
+    mov   ax, [si+PTEntry.startLBA]         ; update start LBA
+    mov   [PACKET+8], ax                    ; [unsafe] ignore hi-word
  .visit_main_part.iter:
     add   si, 16
     inc   cl
@@ -115,12 +111,12 @@ mbr_main:
     call  direct_write_str
     add   dl, al
     xor   ax, ax
-    mov   al, [FIRST_ACTIVE_PART]
+    mov   al, [SELECTED_ACTIVE_PART]
     push  ax
     push  0
     push  dx
     call  direct_write_u32
-    add   sp, 2*2+6*3*4+2+6             ; clean-up str*3+u32*13
+    add   sp, 2*2+6*3*4+2+6                 ; clean-up str*3+u32*13
  .load:
     mov   si, PACKET
     mov   dl, [BOOT_DRIVE]
@@ -129,10 +125,11 @@ mbr_main:
     mov   dx, 0x0a00
     jc    .fail
  .done:
+%ifndef NDEBUG
     push  MSG_HINT
     call  direct_write_str              ; [unsafe] ignore sp restore
     call  wait_for_key
-    mov   dl, [FIRST_ACTIVE_PART]       ; pass primary partion no. to boot
+%endif
     jmp   BOOT_SEGMENT:BOOT_OFFSET
  .fail:
     push   MSG_RDFAIL
@@ -202,16 +199,14 @@ direct_write_str:
     pop   bp
     ret
 
+%ifndef NDEBUG
 ; void wait_for_key()
 wait_for_key:
-   mov ah, 0
-   int 16h
-   xor ah, ah
+   mov    ah, 0
+   int    16h
+   xor    ah, ah
    ret
-
-; save first active partion
-FIRST_ACTIVE_PART:  db -1
-BOOT_DRIVE:         db 0
+%endif
 
 ; data address packet
 PACKET:
@@ -232,6 +227,11 @@ MSG_BOOT_PART:      db "1st ACTIVE PRIMARY PARTION: ",0
 MSG_HINT:           db "PRESS TO CONTINUE",0
 
 ; padding
-times 446-($-$$)    db 0    ; [  0,446) = Boot code
+; NOTE: reserve 2 bytes for interphase access
+times 444-($-$$)    db 0    ; [  0,446) = Boot code
                             ; [446,510) = Partition Table
                             ; [510,512) = 0x55aa
+
+; save first active partion
+SELECTED_ACTIVE_PART:  db -1
+BOOT_DRIVE:            db 0
