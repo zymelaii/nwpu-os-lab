@@ -1,80 +1,60 @@
-SELECTOR_KERNEL_CS	equ	8
+SELECTOR_KERNEL_CS equ 8
 
-; 导入函数
-extern	cstart
+extern clear_screen
+extern cstart
+extern kprintf_test
+extern cmatrix_start
+extern busy_sleep
 
-; 导入全局变量
-extern	gdt_ptr
+extern gdt_ptr
 
-[SECTION .bss]
-StackSpace		resb	4096
-StackTop:		; 栈顶
+[section .bss]
 
-[section .text]	; 代码在此
+resb 4096
+STACK_TOP: ; top of the stack for the kernel
 
-global _start	; 导出 _start
+[section .text]
+
+    global _start
 _start:
-	; 此时内存看上去是这样的（更详细的内存情况在 LOADER.ASM 中有说明）：
-	;              ┃                  ┃
-	;              ┃        ...       ┃
-	;              ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃■■■■■■Page  Tables■■■■■■┃
-	;              ┃■■■■■(大小由LOADER决定)■■■■┃ PageTblBase
-	;    00101000h ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃■■■■Page Directory Table■■■■┃ PageDirBase = 1M
-	;    00100000h ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃□□□□ Hardware  Reserved □□□□┃ B8000h ← gs
-	;       9FC00h ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃■■■■■■■LOADER.BIN■■■■■■┃ somewhere in LOADER ← esp
-	;       90000h ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃■■■■■■■KERNEL.BIN■■■■■■┃
-	;       80000h ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃■■■■■■■■KERNEL■■■■■■■┃ 30400h ← KERNEL 入口 (KernelEntryPointPhyAddr)
-	;       30000h ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┋       ...        ┋
-	;              ┋                  ┋
-	;           0h ┗━━━━━━━━━━━━━━━━━━┛ ← cs, ds, es, fs, ss
-	;
-	;
-	; GDT 以及相应的描述符是这样的：
-	;
-	;		Descriptors         Selectors
-	;              ┏━━━━━━━━━━━━━━━━━━┓
-	;              ┃Dummy Descriptor  ┃
-	;              ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃DESC_FLAT_C (0～4G)┃ 8h = cs
-	;              ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃DESC_FLAT_RW(0～4G)┃ 10h = ds, es, fs, ss
-	;              ┣━━━━━━━━━━━━━━━━━━┫
-	;              ┃DESC_VIDEO        ┃  1Bh = gs
-	;              ┗━━━━━━━━━━━━━━━━━━┛
-	;
-	; 注意! 在使用 C 代码的时候一定要保证 ds, es, ss 这几个段寄存器的值是一样的
-	; 因为编译器有可能编译出使用它们的代码, 而编译器默认它们是一样的. 比如串拷贝操作会用到 ds 和 es.
-	;
-	;
+    ; reset stack pointer
+    mov	  esp, STACK_TOP
 
-	; 把 esp 从 LOADER 挪到 KERNEL
-	mov	esp, StackTop	; 堆栈在 bss 段中
+    ; update gdt
+    sgdt  [gdt_ptr]
+    call  cstart
+    lgdt  [gdt_ptr]
 
-	mov ah, 0x0f
-	mov al, 'k'
-	mov [gs:80], ax
-	mov al, 'e'
-	mov [gs:82], ax
-	mov al, 'r'
-	mov [gs:84], ax
-	mov al, 'n'
-	mov [gs:86], ax
-	mov al, 'e'
-	mov [gs:88], ax
-	mov al, 'l'
-	mov [gs:90], ax
+    ; display "kernel" in the center of screen
+    call  clear_screen
+    mov   esi, .str.data
+    mov   di, (80*(25/2)+(80-6)/2)*2
+    mov   ah, 0x0f
+    mov   cx, 6
+    jmp   .write.loop
+ .str.data:
+    db "kernel"
+ .write.loop:
+    mov   al, [esi]
+    inc   esi
+    mov   [gs:di], ax
+    add   di, 2
+    loop  .write.loop
 
-	sgdt	[gdt_ptr]	; cstart() 中将会用到 gdt_ptr
-	call	cstart		; 在此函数中改变了gdt_ptr，让它指向新的GDT
-	lgdt	[gdt_ptr]	; 使用新的GDT
+    ; run kprintf test
+    call  busy_sleep
+    call  clear_screen
+    call  kprintf_test
 
-	jmp	SELECTOR_KERNEL_CS:csinit
-csinit:		; “这个跳转指令强制使用刚刚初始化的结构”——<<OS:D&I 2nd>> P90.
-	hlt
+    ; run matrix demo
+    call  busy_sleep
+    call  clear_screen
+    call  cmatrix_start
+
+    ; NOTE: use jmp to force the changes into effect
+    jmp	  SELECTOR_KERNEL_CS:csinit
+
+    global csinit
+csinit:
+    ; TODO: further work from the kernel...
+    hlt
