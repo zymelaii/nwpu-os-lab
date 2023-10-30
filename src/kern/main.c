@@ -8,6 +8,8 @@
 #include <kern/protect.h>
 #include <kern/trap.h>
 
+#include "game.h"
+
 /*
  * 三个测试函数，用户进程的执行流
  */
@@ -74,10 +76,7 @@ Process_t	*p_proc_ready;
 // pcb表
 Process_t	proc_table[PCB_SIZE];
 void (*entry[]) = {
-	TestABC,
-	TestABC,
-	//TestABC,
-	cb_getch_test,
+	startGame,
 };
 
 /*
@@ -111,13 +110,7 @@ void kernel_main()
 			| RPL_USER;
 		p_proc->user_regs.eip = (u32)entry[i];
 		p_stack += STACK_PREPROCESS;
-
-		//! | ret addr | param 1 | param 2 | param... |
-		u32 *params = (u32*)p_stack - 3;
-		params[0] = (uintptr_t)(void*)color_print_str[i];
-		params[1] = 'A' + i;
-		params[2] = (uintptr_t)(void*)p_proc;
-		p_proc->user_regs.esp = (u32)(params - 1);
+		p_proc->user_regs.esp = (u32)p_stack;
 
 		p_proc->pid = i+1;
 		p_proc->user_regs.eflags = 0x1202; /* IF=1, IOPL=1 */

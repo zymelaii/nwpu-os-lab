@@ -33,6 +33,9 @@ $(OBJDIR)/kern/%.o: kern/%.asm $(OBJDIR)/.vars.CFLAGS
 	@mkdir -p $(@D)
 	@$(AS) -f elf -o $@ $<
 
+lib/kern/%.a: ../ref/lib/kern/%.a
+	@cp $< $@
+
 $(OBJDIR)/lib/kern/%.a: lib/kern/%.a
 	@echo + cp $<
 	@mkdir -p $(@D)

@@ -35,7 +35,7 @@ struct s_Process {
 };
 typedef struct s_Process Process_t;
 
-#define PCB_SIZE 3
+#define PCB_SIZE 1
 /* 指向当前进程pcb的指针 */
 extern Process_t	*p_proc_ready;
 /* pcb表 */

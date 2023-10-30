@@ -103,17 +103,7 @@ exception_handler(int vec_no, int err_code, int eip, int cs, int eflags)
 void
 clock_interrupt_handler(int irq)
 {
-	kprintf("i%d", clock() + 1);
 	timecounter_inc();
-
-	//! keep 0x8 for thread 0, left for the others
-	int flag = clock();
-	if ((flag & 0xf) == 0x8) {
-		p_proc_ready = proc_table;
-	} else {
-		int i = p_proc_ready - proc_table;
-		p_proc_ready = &proc_table[i % (PCB_SIZE - 1) + 1];
-	}
 }
 
 /*
