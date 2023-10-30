@@ -101,8 +101,8 @@ exception_handler(int vec_no, int err_code, int eip, int cs, int eflags)
  */
 void
 clock_interrupt_handler(int irq)
-{	
-	kprintf("#");
+{
+	kprintf("i%d", clock());
 	timecounter_inc();
 	p_proc_ready++;
 	if (p_proc_ready >= proc_table + PCB_SIZE) {
