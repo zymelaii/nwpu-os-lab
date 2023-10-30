@@ -66,9 +66,9 @@ Process_t	*p_proc_ready;
 // pcb表
 Process_t	proc_table[PCB_SIZE];
 void (*entry[]) = {
-	TestA,
-	TestB,
-	TestC,
+	TestABC,
+	TestABC,
+	TestABC,
 };
 
 /*
@@ -95,10 +95,16 @@ void kernel_main()
 			| SA_TIL | RPL_USER;
 		p_proc->user_regs.gs = (SELECTOR_VIDEO & SA_RPL_MASK & SA_TI_MASK)
 			| RPL_USER;
-		
 		p_proc->user_regs.eip = (u32)entry[i];
 		p_stack += STACK_PREPROCESS;
-		p_proc->user_regs.esp = (u32)p_stack;
+
+		//! | ret addr | param 1 | param 2 | param... |
+		u32 *params = (u32*)p_stack - 3;
+		params[0] = (uintptr_t)(void*)color_print_str[i];
+		params[1] = 'A' + i;
+		params[2] = (uintptr_t)(void*)p_proc;
+		p_proc->user_regs.esp = (u32)(params - 1);
+
 		p_proc->pid = i+1;
 		p_proc->user_regs.eflags = 0x1202; /* IF=1, IOPL=1 */
 	}
