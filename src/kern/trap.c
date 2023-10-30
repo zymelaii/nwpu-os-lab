@@ -5,6 +5,8 @@
 #include <kern/process.h>
 #include <kern/time.h>
 #include <kern/trap.h>
+#include <kern/keymap.h>
+#include <kern/keyboard.h>
 
 /*
  * 当前内核需要处理中断的数量
@@ -13,8 +15,7 @@ int k_reenter;
 
 void (*irq_table[16])(int) = {
 	clock_interrupt_handler,
-	default_interrupt_handler,
-	default_interrupt_handler,
+	keyboard_interrupt_handler,
 	default_interrupt_handler,
 	default_interrupt_handler,
 	default_interrupt_handler,
@@ -113,4 +114,23 @@ clock_interrupt_handler(int irq)
 		int i = p_proc_ready - proc_table;
 		p_proc_ready = &proc_table[i % (PCB_SIZE - 1) + 1];
 	}
+}
+
+/*
+ * 键盘中断处理函数
+ */
+void
+keyboard_interrupt_handler(int irq)
+{
+	u8 scan_code = inb(0x60); //<! read the coming scan code
+	if (scan_code & 0x80) { return; }
+	u32 keycode = keymap[scan_code & 0x7f];
+	//! only accept letters (ignore case)
+	if (keycode >= 'A' && keycode <= 'Z') {
+		keycode += 'a' - 'A';
+	}
+	if (!(keycode >= 'a' && keycode <= 'z')) {
+		return;
+	}
+	add_keyboard_buf(keycode & 0x7f);
 }

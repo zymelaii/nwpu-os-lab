@@ -56,6 +56,14 @@ void TestABC(const char * fmt, char id, Process_t* my_pcb) {
 	}
 }
 
+void cb_getch_test() {
+	while (1) {
+		u8 ch = getch();
+		if (ch == 0xff) { continue; }
+		kprintf("%c ", ch);
+	}
+}
+
 // 每个栈空间有4kb大
 #define STACK_PREPROCESS	0x1000
 #define STACK_TOTSIZE		STACK_PREPROCESS * PCB_SIZE
@@ -68,7 +76,8 @@ Process_t	proc_table[PCB_SIZE];
 void (*entry[]) = {
 	TestABC,
 	TestABC,
-	TestABC,
+	//TestABC,
+	cb_getch_test,
 };
 
 /*
@@ -77,6 +86,11 @@ void (*entry[]) = {
  */
 void kernel_main()
 {
+	//! reset timer frequency
+	outb(0x43, 0x34);
+	outb(0x40, (u8)(((1193182 / 1000) >> 0) & 0xff));
+	outb(0x40, (u8)(((1193182 / 1000) >> 8) & 0xff));
+
 	kprintf("---start kernel main---\n");
 
 	Process_t *p_proc = proc_table;
@@ -112,6 +126,7 @@ void kernel_main()
 	p_proc_ready = proc_table;
 
 	enable_irq(CLOCK_IRQ);
+	enable_irq(KEYBOARD_IRQ);
 
 	restart();
 	assert(0);

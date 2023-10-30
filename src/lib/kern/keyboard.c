@@ -22,11 +22,23 @@ static kb_inbuf_t kb_input = {
 void
 add_keyboard_buf(u8 ch)
 {
+	//! NOTE: assume that buf is available
+	++kb_input.count;
+	int next = (kb_input.p_tail - kb_input.buf + 1) % KB_INBUF_SIZE;
+	*kb_input.p_tail = ch;
+	kb_input.p_tail = &kb_input.buf[next];
 	return;
 }
 
 u8
 getch(void)
 {
-	return 0;	
+	if (kb_input.count == 0) {
+		return 0xff;
+	}
+	int next = (kb_input.p_head - kb_input.buf + 1) % KB_INBUF_SIZE;
+	u8 ch = *kb_input.p_head;
+	--kb_input.count;
+	kb_input.p_head = &kb_input.buf[next];
+	return ch;
 }
