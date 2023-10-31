@@ -38,7 +38,7 @@ KERN_DBG = $(OBJDIR)/kern/kernel.dbg
 IMAGE = $(OBJDIR)/a.img
 
 QEMU_FLAGS := -boot order=a
-QEMU_FLAGS += -serial stdio
+#QEMU_FLAGS += -serial stdio
 QEMU_FLAGS += -m 128m
 QEMU_FLAGS += -display curses
 
