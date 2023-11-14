@@ -1,0 +1,47 @@
+#
+# makefile的kernel部分，
+# 将会导入到根目录的makefile文件
+#
+
+OBJDIRS 	+= kern
+
+KERN_ENTRY_ADDR	:= 0xC0200000
+KERN_SRCFILES:=	kern/astart.asm	\
+		kern/atrap.asm	\
+		kern/aswitch.asm	\
+		kern/fs.c	\
+		kern/kmalloc.c	\
+		kern/main.c	\
+		kern/pmap_test.c\
+		kern/pmap.c	\
+		kern/process.c	\
+		kern/sche.c	\
+		kern/start.c	\
+		kern/syscall.c	\
+		kern/time.c	\
+		kern/trap.c	\
+		lib/kern/keyboard.c	\
+		lib/kern/serial.c	\
+		lib/kern/terminal.c	\
+		lib/printfmt.c	\
+		lib/string.c	
+
+KERN_OBJFILES	:= $(patsubst %.c, $(OBJDIR)/%.o, $(KERN_SRCFILES))
+KERN_OBJFILES	:= $(patsubst %.asm, $(OBJDIR)/%.o, $(KERN_OBJFILES))
+
+$(OBJDIR)/kern/%.o: kern/%.c $(OBJDIR)/.vars.CFLAGS
+	@echo + cc $<
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/kern/%.o: kern/%.asm $(OBJDIR)/.vars.CFLAGS
+	@echo + as obj $<
+	@mkdir -p $(@D)
+	@$(AS) -f elf -o $@ $<
+
+$(KERN_BIN) $(KERN_DBG): $(KERN_OBJFILES) $(OBJDIR)/.vars.LDFLAGS
+	@echo + ld $@
+	@$(LD) $(LDFLAGS) -s -Ttext $(KERN_ENTRY_ADDR) \
+		-o $(KERN_BIN) $(KERN_OBJFILES) $(GCC_LIB)
+	@$(LD) $(LDFLAGS) -Ttext $(KERN_ENTRY_ADDR) \
+		-o $(KERN_DBG) $(KERN_OBJFILES) $(GCC_LIB)
