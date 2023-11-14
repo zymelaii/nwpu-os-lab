@@ -87,9 +87,15 @@ void kernel_main(void)
 		lcr3(p_proc->pcb.cr3);
 
 		static char filename[PCB_SIZE][12] = {
+#if defined(TASKNO) && TASKNO == 2
+			"TESTPID BIN",
+			"TESTPID BIN",
+			"TESTKEY BIN",
+#else
 			"DELAY   BIN",
 			"DELAY   BIN",
 			"DELAY   BIN",
+#endif
 		};
 		// 从磁盘中将文件读出，需要注意的是要满足短目录项的文件名长度11，
 		// 前八个为文件名，后三个为后缀名，跟BootLoader做法一致

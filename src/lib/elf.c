@@ -99,8 +99,59 @@ static const char *eh_lookup_machine(int i) {
 	}
 }
 
+static const char *ep_lookup_type(int i) {
+	switch (i) {
+		case 0x00000000: return "PT_NULL";
+		case 0x00000001: return "PT_LOAD";
+		case 0x00000002: return "PT_DYNAMIC";
+		case 0x00000003: return "PT_INTERP";
+		case 0x00000004: return "PT_NOTE";
+		case 0x00000005: return "PT_SHLIB";
+		case 0x00000006: return "PT_PHDR";
+		case 0x00000007: return "PT_TLS";
+		case 0x60000000: return "PT_LOOS";
+		case 0x6FFFFFFF: return "PT_HIO";
+		case 0x70000000: return "PT_LOPROC";
+		case 0x7FFFFFFF: return "PT_HIPRO";
+		default: return "UNKNOWN";
+	}
+}
+
+static const char *ep_lookup_flags(int i) {
+	switch (i) {
+		case 0b001: return "PF_X";
+		case 0b010: return "PF_W";
+		case 0b100: return "PF_R";
+		case 0b011: return "PF_W | PF_X";
+		case 0b101: return "PF_R | PF_X";
+		case 0b110: return "PF_R | PF_W";
+		case 0b111: return "PF_R | PF_W | PF_X";
+		default: return "INVALID";
+	}
+}
+
 static void dump_program_header(writefmt_t writefmt, Elfhdr_t *elf_header, int index) {
-	//! TODO: dump program header
+	Proghdr_t *prog = (void*)elf_header + elf_header->e_phoff + index * elf_header->e_phentsize;
+	writefmt(
+		"elf program header {\n"
+		"  type: 0x%x \"%s\"\n"
+		"  offset: %#p\n"
+		"  virtual address: %#p\n"
+		"  physical address: %#p\n"
+		"  file size: %d\n"
+		"  memory size: %d\n"
+		"  flags: 0x%x \"%s\"\n"
+		"  align: %d\n"
+		"}\n",
+		prog->p_type, ep_lookup_type(prog->p_type),
+		prog->p_offset,
+		prog->p_va,
+		prog->p_pa,
+		prog->p_filesz,
+		prog->p_memsz,
+		prog->p_flags, ep_lookup_flags(prog->p_flags),
+		prog->p_align
+	);
 }
 
 static void dump_section_header(writefmt_t writefmt, Elfhdr_t *elf_header, int index) {

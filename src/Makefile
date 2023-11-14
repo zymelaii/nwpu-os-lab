@@ -10,6 +10,7 @@ OBJCOPY	:= objcopy
 OBJDUMP	:= objdump
 
 DEFS ?=
+TASKNO ?=
 
 CFLAGS := $(CFLAGS) $(DEFS)
 CFLAGS += -I$(INCDIR) -MD
@@ -20,6 +21,7 @@ CFLAGS += -static -m32 -fno-pie
 CFLAGS += -g
 CFLAGS += -Werror
 CFLAGS += -Wno-unused-variable
+CFLAGS += -DTASKNO=$(TASKNO)
 
 ASFLAGS :=
 
