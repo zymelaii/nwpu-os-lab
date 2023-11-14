@@ -66,7 +66,7 @@ clean:
 	@rm -rf $(OBJDIR)
 .PHONY: clean
 
-$(IMAGE): $(BOOT_BIN) $(LOADER_BIN) $(KERN_BIN)
+$(IMAGE): $(BOOT_BIN) $(LOADER_BIN) $(KERN_BIN) $(USER_BINS)
 	@stat $@ 1>/dev/null 2>/dev/null || dd if=/dev/zero of=$@ bs=512 count=102400
 	@mkfs.vfat -F 32 -s8 $@
 	@dd if=$(BOOT_BIN) of=$@ bs=1 count=423 seek=90 conv=notrunc
@@ -74,6 +74,7 @@ $(IMAGE): $(BOOT_BIN) $(LOADER_BIN) $(KERN_BIN)
 	@sudo mount -o loop $@ $(OBJDIR)/mnt
 	@sudo cp $(LOADER_BIN) $(OBJDIR)/mnt -v
 	@sudo cp $(KERN_BIN) $(OBJDIR)/mnt -v
+	@sudo cp $(USER_BINS) $(OBJDIR)/mnt -v
 	@sudo umount $(OBJDIR)/mnt
 	@rm -rf $(OBJDIR)/mnt
 
