@@ -22,7 +22,7 @@ syscall0(size_t NR_syscall)
 	ssize_t ret;
 	asm volatile("int $0x80"
 		: "=a"(ret)
-		: "a" (NR_syscall) 
+		: "a" (NR_syscall)
 		: "cc", "memory");
 	return ret;
 }
@@ -61,7 +61,7 @@ ssize_t syscall3(size_t NR_syscall, size_t p1, size_t p2, size_t p3)
 		: "cc", "memory");
 	return ret;
 }
-ssize_t syscall4(size_t NR_syscall, size_t p1, size_t p2, 
+ssize_t syscall4(size_t NR_syscall, size_t p1, size_t p2,
 			size_t p3, size_t p4)
 {
 	ssize_t ret;
@@ -75,7 +75,7 @@ ssize_t syscall4(size_t NR_syscall, size_t p1, size_t p2,
 		: "cc", "memory");
 	return ret;
 }
-ssize_t syscall5(size_t NR_syscall, size_t p1, size_t p2, 
+ssize_t syscall5(size_t NR_syscall, size_t p1, size_t p2,
 			size_t p3, size_t p4, size_t p5)
 {
 	ssize_t ret;
@@ -113,4 +113,10 @@ ssize_t
 write(int fd, const void *buf, size_t count)
 {
 	return syscall3(_NR_write, fd, (size_t)buf, count);
+}
+
+ssize_t
+delay_ticks(int ticks)
+{
+	return syscall1(_NR_delay_ticks, ticks);
 }

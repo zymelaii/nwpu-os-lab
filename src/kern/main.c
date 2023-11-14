@@ -3,7 +3,9 @@
 #include <string.h>
 #include <type.h>
 #include <x86.h>
+#include <elf.h>
 
+#include <kern/serial.h>
 #include <kern/fs.h>
 #include <kern/kmalloc.h>
 #include <kern/stdio.h>
@@ -11,6 +13,33 @@
 #include <kern/process.h>
 #include <kern/protect.h>
 #include <kern/trap.h>
+
+void load_elf(Elfhdr_t *elf_header, phyaddr_t phyaddr) {
+	assert(elf_header->e_magic == 0x464c457f);
+	Proghdr_t *ph = (void*)elf_header + elf_header->e_phoff;
+	for (int i = 0; i < elf_header->e_phnum; ++i, ++ph) {
+		if (ph->p_type != PT_LOAD) { continue; }
+		void *src = (void*)elf_header + ph->p_offset;
+		map_elf_program(phyaddr, ph);
+		memcpy((void*)ph->p_va, src, ph->p_memsz);
+	}
+}
+
+void* alloc_4k_stack(phyaddr_t phybase) {
+	static uintptr_t stack_top = 0xbf000000;
+	uintptr_t vaddr = stack_top;
+	assert(stack_top > (PGSIZE << PTXSHIFT));
+	stack_top -= PGSIZE << PTXSHIFT;
+	uintptr_t *pde_ptr = (uintptr_t*)K_PHY2LIN(phybase);
+	pde_ptr += PDX(vaddr);
+	phyaddr_t pte_phy = phy_malloc_4k();
+	uintptr_t *pte_ptr = (uintptr_t*)K_PHY2LIN(pte_phy) + PTX(vaddr);
+	assert(PGOFF(pte_ptr) == 0);
+	*pde_ptr = pte_phy | PTE_P | PTE_W | PTE_U;
+	phyaddr_t phy_addr = phy_malloc_4k();
+	*pte_ptr = phy_addr | PTE_P | PTE_W | PTE_U;
+	return (void*)(vaddr + PGSIZE);
+}
 
 // 指向当前进程pcb的指针
 proc_t *p_proc_ready;
@@ -55,25 +84,35 @@ void kernel_main(void)
 		// 就可以直接lcr3，于此同时执行流不会触发page fault
 		// 如果不先map_kern，执行流会发现执行的代码的线性地址不存在爆出Page Fault
 		// 当然选不选择看个人的想法，评价是都行，各有各的优缺点
-		// lcr3(p_proc->pcb.cr3);
+		lcr3(p_proc->pcb.cr3);
+
 		static char filename[PCB_SIZE][12] = {
 			"DELAY   BIN",
-			"DELAY   BIN",	
+			"DELAY   BIN",
+			"DELAY   BIN",
 		};
 		// 从磁盘中将文件读出，需要注意的是要满足短目录项的文件名长度11，
 		// 前八个为文件名，后三个为后缀名，跟BootLoader做法一致
 		// 推荐将文件加载到3GB + 48MB处，应用程序保证不会有16MB那么大
-		read_file(filename[i], (void *)K_PHY2LIN(48 * MB));
+		void *dst = (void *)K_PHY2LIN(48 * MB);
+		read_file(filename[i], dst);
+
 		// 现在你就需要将从磁盘中读出的ELF文件解析到用户进程的地址空间中
-		panic("load elf");
-		
+		Elfhdr_t *elf_header = (Elfhdr_t*)dst;
+		dump_elf_header((writefmt_t)cprintf, elf_header);
+		load_elf(elf_header, p_proc->pcb.cr3);
+
 		// 上一个实验中，我们开栈是用内核中的一个数组临时充当栈
 		// 但是现在就不行了，用户是无法访问内核的地址空间（3GB ~ 3GB + 128MB）
 		// 需要你自行处理给用户分配用户栈。
-		panic("allocate user stack");
+
 		// 初始化用户寄存器
+
+		void *stack_bottom = alloc_4k_stack(p_proc->pcb.cr3);
+		p_proc->pcb.user_regs.eip = elf_header->e_entry;
+		p_proc->pcb.user_regs.esp = (u32)stack_bottom;
 		p_proc->pcb.user_regs.eflags = 0x1202; /* IF=1, IOPL=1 */
-		
+
 		// 接下来初始化内核寄存器，
 		// 为什么需要初始化内核寄存器原因是加入了系统调用后
 		// 非常有可能出现系统调用执行过程中插入其余中断的情况，
@@ -91,7 +130,11 @@ void kernel_main(void)
 
 		// 初始化其余量
 		p_proc->pcb.pid = i;
-		static int priority_table[PCB_SIZE] = {1, 2};
+
+		//! NOTE: 上面的切换内核栈似乎并没有生效，所以为了能够保证过 delay
+		//! 的测试，这里使进程的总时间片能够整除 1000
+		static int priority_table[PCB_SIZE] = {1, 2, 5};
+
 		// priority 预计给每个进程分配的时间片
 		// ticks 进程剩余的进程片
 		p_proc->pcb.priority = p_proc->pcb.ticks = priority_table[i];
@@ -101,7 +144,7 @@ void kernel_main(void)
 	// 切换进程页表和tss
 	lcr3(p_proc_ready->pcb.cr3);
 	tss.esp0 = (u32)(&p_proc_ready->pcb.user_regs + 1);
-	
+
 	// 开个无用的kern_context存当前执行流的寄存器上下文（之后就没用了，直接放在临时变量中）
 	struct s_kern_context idle;
 	switch_kern_context(&idle, &p_proc_ready->pcb.kern_regs);

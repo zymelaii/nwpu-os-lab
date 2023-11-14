@@ -1,5 +1,7 @@
 #include <type.h>
+#include <string.h>
 #include <elf.h>
+#include <assert.h>
 
 static const char *eh_lookup_ident_class(int i) {
 	return (const char*[]){"INVALID", "32-BIT", "64-BIT"}[i];
@@ -154,4 +156,8 @@ void dump_elf_header(writefmt_t writefmt, Elfhdr_t *elf_header) {
 	for (int i = 0; i < elf_header->e_shnum; ++i) {
 		dump_section_header(writefmt, elf_header, i);
 	}
+}
+
+void parse_elf_file(Elfhdr_t *elf_header) {
+	//! TODO: parse elf file
 }

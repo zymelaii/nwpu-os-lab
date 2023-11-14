@@ -28,3 +28,14 @@ do_get_ticks(void)
 {
 	return (ssize_t)kern_get_ticks();
 }
+
+ssize_t
+do_delay_ticks(size_t ticks)
+{
+	size_t start = kern_get_ticks();
+	size_t now = start;
+	while (now < start + ticks) {
+		now = kern_get_ticks();
+	}
+	return now - start;
+}

@@ -62,7 +62,7 @@ typedef union u_proc proc_t;
 // kern/main.c
 extern proc_t *p_proc_ready;
 /* pcb表 */
-#define PCB_SIZE	2
+#define PCB_SIZE	3
 // kern/main.c
 extern proc_t	proc_table[];
 

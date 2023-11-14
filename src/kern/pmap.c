@@ -44,3 +44,22 @@ map_kern(phyaddr_t cr3)
 	// 经常assert是个好习惯
 	assert(phy_addr == 128 * MB);
 }
+
+void map_elf_program(phyaddr_t cr3, Proghdr_t *ph) {
+	uintptr_t *pde_ptr = (uintptr_t*)K_PHY2LIN(cr3);
+	pde_ptr += PDX(ph->p_va);
+	int pte_num = ph->p_memsz / (4 * KB) + !!(ph->p_memsz % (4 * KB));
+	uintptr_t *pte_ptr = NULL;
+	if (*pde_ptr & PTE_P) {
+		pte_ptr = (uintptr_t*)K_PHY2LIN(*pde_ptr & 0xfffff000) + PTX(ph->p_va);
+	} else {
+		phyaddr_t pte_phy = phy_malloc_4k();
+		pte_ptr = (uintptr_t*)K_PHY2LIN(pte_phy) + PTX(ph->p_va);
+		*pde_ptr = pte_phy | PTE_P | PTE_W | PTE_U;
+		assert(PGOFF(pte_phy) == 0);
+	}
+	while (pte_num--) {
+		phyaddr_t pte_phy = phy_malloc_4k();
+		*pte_ptr++ = pte_phy | PTE_P | PTE_W | PTE_U;
+	}
+}

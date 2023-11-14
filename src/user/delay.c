@@ -12,7 +12,7 @@ int main()
 		printf("\x1b[%dmI'm %d!\x1b[0m", 90 + pid + 1, pid);
 		fflush();
 		int before_ticks = get_ticks();
-		// delay_ticks(target_ticks);
+		delay_ticks(target_ticks);
 		int after_ticks = get_ticks();
 
 		int real_ticks = after_ticks - before_ticks;
