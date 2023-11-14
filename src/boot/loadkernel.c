@@ -122,7 +122,7 @@ readseg(void *va, u32 count, u32 offset)
 	void *end_va = va + count;
 
 	assert(offset >= elf_off);
-	
+
 	while (va < end_va) {
 		// 如果[elf_off, elf_off + CLUSIZE)里面有段需要的数据
 		// 就将对应的数据从文件中加载到指定位置，否则找下一个簇，移动elf_off的位置
@@ -155,7 +155,7 @@ find_kernel_elf_clus(void)
 {
 	u32 elf_clus = 0;
 	u32 root_clus = bpb.BPB_RootClus;
-	
+
 	while (root_clus < 0x0FFFFFF8) {
 		struct DirectoryEntry *p = (void *)BUF_ADDR;
 		void *buf_end = read_data_sec((void *)BUF_ADDR, root_clus);
@@ -164,7 +164,7 @@ find_kernel_elf_clus(void)
 			if (p->DIR_Attr == 0xf)
 				continue;
 			if (strncmp(p->DIR_Name, KERNEL_NAME, 11) == 0) {
-				elf_clus = (u32)p->DIR_FstClusHI << 16 | 
+				elf_clus = (u32)p->DIR_FstClusHI << 16 |
 						p->DIR_FstClusLO;
 				break;
 			}
@@ -186,8 +186,8 @@ load_kernel_elf(Elfhdr_t *eh)
 		if (ph->p_type != PT_LOAD)
 			continue;
 		readseg((void *)ph->p_va, ph->p_filesz, ph->p_offset);
-		memset((void *)ph->p_va + ph->p_filesz, 
-			0, 
+		memset((void *)ph->p_va + ph->p_filesz,
+			0,
 			ph->p_memsz - ph->p_filesz);
 	}
 }
@@ -195,12 +195,12 @@ load_kernel_elf(Elfhdr_t *eh)
 /*
  * 初始化函数，加载kernel.bin的elf文件并跳过去。
  */
-void 
+void
 load_kernel(void)
 {
 	kprintf("\x1b[2J\x1b[H");
 	kprintf("----start loading kernel elf----\n");
-	
+
 	// 获取文件系统引导头
 	readsect((void *)&bpb, 0);
 	assert(bpb.BPB_BytsPerSec == SECTSIZE && bpb.BPB_SecPerClus == 8);
@@ -215,10 +215,11 @@ load_kernel(void)
 	read_data_sec((void *)ELF_ADDR, elf_clus);
 	Elfhdr_t *eh = (void *)ELF_ADDR;
 	assert(eh->e_ehsize <= CLUSIZE);
-	
 	// 将elf的内容加载到指定位置
 	load_kernel_elf(eh);
-	
 	kprintf("----finish loading kernel elf----\n");
+
+	dump_elf_header((writefmt_t)cprintf, eh);
+
 	((void (*)(void))(eh->e_entry))();
 }

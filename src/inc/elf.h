@@ -67,4 +67,7 @@ typedef struct s_Secthdr Secthdr_t;
 // Values for Secthdr_t::sh_name
 #define ELF_SHN_UNDEF		0
 
+typedef void(*writefmt_t)(const char*, ...);
+void dump_elf_header(writefmt_t writefmt, Elfhdr_t *elf_header);
+
 #endif /* MINIOS_ELF_H */

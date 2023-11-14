@@ -8,8 +8,10 @@ OBJDIRS 	+= boot
 LOADER_SRCFILES	:= boot/loader.asm	\
 		boot/loadkernel.c	\
 		lib/string.c		\
+		lib/elf.c			\
+		lib/kern/serial.c   \
 		lib/printfmt.c		\
-		lib/kern/terminal.c		
+		lib/kern/terminal.c
 
 LOADER_OBJFILES	:= $(patsubst %.c, $(OBJDIR)/%.o, $(LOADER_SRCFILES))
 LOADER_OBJFILES	:= $(patsubst %.asm, $(OBJDIR)/%.o, $(LOADER_OBJFILES))

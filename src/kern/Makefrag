@@ -23,8 +23,9 @@ KERN_SRCFILES:=	kern/astart.asm	\
 		lib/kern/keyboard.c	\
 		lib/kern/serial.c	\
 		lib/kern/terminal.c	\
+		lib/elf.c \
 		lib/printfmt.c	\
-		lib/string.c	
+		lib/string.c
 
 KERN_OBJFILES	:= $(patsubst %.c, $(OBJDIR)/%.o, $(KERN_SRCFILES))
 KERN_OBJFILES	:= $(patsubst %.asm, $(OBJDIR)/%.o, $(KERN_OBJFILES))
