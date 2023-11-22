@@ -9,8 +9,8 @@ NM	:= nm
 OBJCOPY	:= objcopy
 OBJDUMP	:= objdump
 
-DEFS ?=
-TASKNO ?=
+DEFS   ?=
+TASKNO ?= 1
 
 CFLAGS := $(CFLAGS) $(DEFS)
 CFLAGS += -I$(INCDIR) -MD
