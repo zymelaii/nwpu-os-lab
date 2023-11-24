@@ -146,10 +146,7 @@ clock_interrupt_handler(int irq)
 {
 	timecounter_inc();
 	// 当一个函数的时间片全用完时
-	if (--p_proc_ready->pcb.ticks == 0) {
-		p_proc_ready->pcb.ticks = p_proc_ready->pcb.priority;
-		schedule();
-	}
+	try_schedule();
 }
 
 /*
@@ -176,4 +173,3 @@ syscall_handler(void)
 	ssize_t ret = (*syscall_table[syscall_id])();
 	p_proc_ready->pcb.user_regs.eax = ret;
 }
-

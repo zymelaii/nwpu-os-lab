@@ -4,19 +4,50 @@
 #include <kern/protect.h>
 #include <kern/time.h>
 #include <kern/trap.h>
+#include <kern/sche.h>
+
+delay_object_t delay_table[PCB_SIZE];
+
+void schedule(proc_t *desired_next);
+
+void try_schedule() {
+	proc_t *desired_next = NULL;
+	if (--p_proc_ready->pcb.ticks == 0) {
+		p_proc_ready->pcb.ticks = p_proc_ready->pcb.priority;
+		desired_next = &proc_table[(p_proc_ready - proc_table + 1) % PCB_SIZE];
+	}
+	ssize_t now = (ssize_t)kern_get_ticks();
+	for (int i = 0; i < PCB_SIZE; ++i) {
+		if (delay_table[i].handle == NULL) { continue; }
+		if (delay_table[i].fut_tick <= now) {
+			proc_t *proc = delay_table[i].handle;
+			delay_table[i].handle = NULL;
+			if (proc != p_proc_ready) {
+				desired_next = proc;
+				break;
+			}
+		}
+	}
+	if (desired_next != NULL) {
+		schedule(desired_next);
+	}
+}
 
 /*
 * 调度函数
 */
 void
-schedule(void)
+schedule(proc_t *desired_next)
 {
 	DISABLE_INT()
-	
+
 	proc_t *p_cur_proc = p_proc_ready;
-	proc_t *p_next_proc = p_proc_ready + 1;
-	if (p_next_proc >= proc_table + PCB_SIZE) {
-		p_next_proc = proc_table;
+	proc_t *p_next_proc = desired_next;
+	if (p_next_proc == NULL) {
+		p_next_proc = p_proc_ready + 1;
+		if (p_next_proc >= proc_table + PCB_SIZE) {
+			p_next_proc = proc_table;
+		}
 	}
 
 	p_proc_ready = p_next_proc;
@@ -35,18 +66,18 @@ schedule(void)
 	// 然后再之后突然又回来了，还是之前的那些寄存器信息，感觉这个函数啥都没干。
 	// 由于涉及到一大堆跟执行流切换相关的操作，所以一定！一定！一定！要关中断。
 	switch_kern_context(
-		&p_cur_proc->pcb.kern_regs, 
+		&p_cur_proc->pcb.kern_regs,
 		&p_next_proc->pcb.kern_regs);
 	// 在传送回之后需要做的第一件事就是忘掉所有的全局变量的缓存
 	// 防止编译器优化导致某些变量被优化掉，比如说某个全局变量a
 	// 你拿eax去获取a的值，在发生调度之后a的值发生变化，下面用到了a
 	// 然后编译器想都不想就直接用eax接着用了，一个bug就这么来了
-	
+
 	// 这玩意学术名词叫内存屏障，这还只是单核，如果多核就更加恐怖了，
 	// 你会看到内存屏障遍地插，这也是为什么os难的一部分原因，跟缓存斗，跟硬件斗，跟编译器斗，跟并发斗，其乐无穷。
 	// 要敬佩那些写系统软件的人，斗都要斗麻了的。
 	asm volatile ("mfence":::"memory");
-	
+
 	// 这里可能你会比较疑惑为什么还要开中断，
 	// 这个时候你需要要以单线程的思路去想，
 	// 上面的switch_kern_context在执行后执行流就交给了其他进程了，

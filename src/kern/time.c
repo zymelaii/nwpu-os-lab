@@ -2,6 +2,7 @@
 
 #include <kern/syscall.h>
 #include <kern/time.h>
+#include <kern/process.h>
 
 static size_t timecounter;
 
@@ -30,12 +31,19 @@ do_get_ticks(void)
 }
 
 ssize_t
-do_delay_ticks(size_t ticks)
+do_delay_ticks(int ticks)
 {
-	size_t start = kern_get_ticks();
-	size_t now = start;
-	while (now < start + ticks) {
-		now = kern_get_ticks();
+	size_t now = do_get_ticks();
+	proc_t *self = p_proc_ready;
+	delay_object_t *item = delay_table;
+	for (int i = 0; i < PCB_SIZE; ++i) {
+		if (item->handle == NULL) {
+			break;
+		}
+		++item;
 	}
-	return now - start;
+	item->handle = self;
+	item->fut_tick = now + ticks;
+	while (item->handle == self) {}
+	return do_get_ticks() - now;
 }

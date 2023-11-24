@@ -72,6 +72,14 @@ void	switch_kern_context(
 	struct s_kern_context *next_context
 );
 
+typedef struct delay_object_s {
+	proc_t *handle;
+	size_t  fut_tick;
+} delay_object_t;
+
+//! kern/sche.c
+extern delay_object_t delay_table[PCB_SIZE];
+
 // 处理函数
 u32	kern_get_pid(proc_t *p_proc);
 
