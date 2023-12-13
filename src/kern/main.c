@@ -37,12 +37,12 @@ void kernel_main(void)
 	p_proc->fork_tree.sons = NULL;
 	// 在实现了exec系统调用后main函数的负担就少了
 	// 只需要调用一个函数接口就能实现进程的加载
-	if (do_exec("initproc.bin") < 0)
+	if (do_exec("testfork.bin") < 0)
 		panic("init process failed");
 	// 切换tss
 	tss.esp0 = (u32)(&p_proc->user_regs + 1);
 	lcr3(p_proc->cr3);
-	
+
 	// 开个无用的kern_context存当前执行流的寄存器上下文（之后就没用了，直接放在临时变量中）
 	kern_context_t idle;
 	switch_kern_context(&idle, &p_proc->kern_regs);

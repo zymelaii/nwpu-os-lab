@@ -30,7 +30,7 @@ init_segment_regs(pcb_t *p_proc)
 		| RPL_USER;
 }
 
-static inline void
+void
 init_pagetbl(pcb_t *p_proc)
 {
 	phyaddr_t new_cr3 = phy_malloc_4k();
@@ -68,18 +68,18 @@ kern_exec(pcb_t *p_proc, const char *pathname)
 	// 进来先给自己上个锁
 	while (xchg(&p_proc->lock, 1) == 1)
 		schedule();
-	
+
 	if ((ret = read_file(pathname, (void *)K_PHY2LIN(48 * MB))) < 0)
 		goto free;
-	
+
 	// 这里有一个特判，如果不是elf文件会返回ENOEXEC
 	if (*(uintptr_t *)K_PHY2LIN(48 * MB) != ELF_MAGIC) {
 		ret = -ENOEXEC;
 		goto free;
 	}
-	
+
 	assert(p_proc->statu == READY);
-	
+
 	// 初始化用户寄存器
 	memset(&p_proc->user_regs, 0, sizeof(p_proc->user_regs));
 	init_segment_regs(p_proc);
@@ -104,7 +104,7 @@ static inline ssize_t
 translate_pathname(char *dst, const char *src)
 {
 	assert(strlen(dst) == 11);
-	
+
 	char *st = (char *)src;
 	char *ed = st + strlen(st);
 	char *dot = ed;
@@ -120,7 +120,7 @@ translate_pathname(char *dst, const char *src)
 	if (ed - dot - 1 > 3)
 		return -ENOENT;
 	memcpy(dst + 8, dot + 1, ed == dot ? 0 : ed - dot - 1);
-	
+
 	for (char *c = dst ; *c ; c++) {
 		if ('a' <= *c && *c <= 'z')
 			*c += 'A' - 'a';

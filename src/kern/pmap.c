@@ -14,7 +14,7 @@ static phyaddr_t
 alloc_phy_page(page_node_t **page_list)
 {
 	phyaddr_t paddr = phy_malloc_4k();
-	
+
 	page_node_t *new_node = kmalloc(sizeof(page_node_t));
 	new_node->nxt = *page_list;
 	new_node->paddr = paddr;
@@ -30,7 +30,7 @@ alloc_phy_page(page_node_t **page_list)
  * 并将pte_flag置位到页表项（页目录项标志位默认为PTE_P | PTE_W | PTE_U）
  * 这个函数中所有新申请到的页面信息会存放到page_list这个链表中
  */
-static void
+void
 lin_mapping_phy(u32			cr3,
 		page_node_t	**page_list,
 		uintptr_t		laddr,
@@ -56,7 +56,7 @@ lin_mapping_phy(u32			cr3,
 			return;
 		page_phy = alloc_phy_page(page_list);
 		(*page_list)->laddr = laddr;
-		
+
 	} else {
 		if ((pte_ptr[PTX(laddr)] & PTE_P) != 0)
 			warn("this page was mapped before, laddr: %x", laddr);
@@ -113,8 +113,8 @@ map_elf(pcb_t *p_proc, void *elf_addr)
 		memcpy(	(void *)ph->p_va,
 			(const void *)eh + ph->p_offset,
 			ph->p_filesz);
-		memset(	(void *)ph->p_va + ph->p_filesz, 
-			0, 
+		memset(	(void *)ph->p_va + ph->p_filesz,
+			0,
 			ph->p_memsz - ph->p_filesz);
 	}
 
@@ -136,7 +136,7 @@ map_stack(pcb_t *p_proc)
 			K_PHY2LIN(-PGSIZE),
 			(phyaddr_t)-1,
 			PTE_P | PTE_W | PTE_U);
-	
+
 	p_proc->user_regs.esp = K_PHY2LIN(0);
 }
 

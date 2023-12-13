@@ -1,52 +1,165 @@
 #include <assert.h>
-
+#include <string.h>
+#include <x86.h>
+#include <kern/pmap.h>
+#include <kern/kmalloc.h>
+#include <kern/sche.h>
+#include <kern/exec.h>
 #include <kern/process.h>
+#include <kern/trap.h>
+#include <kern/stdio.h>
+
+extern void lin_mapping_phy(
+    u32 cr3, page_node_t **page_list, uintptr_t laddr, phyaddr_t paddr, u32 pte_flag);
+
+static pcb_t *alloc_pcb()
+{
+    for (int i = 0; i < PCB_SIZE; ++i) {
+        if (proc_table[i].pcb.statu == IDLE) {
+            return &proc_table[i].pcb;
+        }
+    }
+    return NULL;
+}
+
+static void copy_pcb(pcb_t *src, pcb_t *dst)
+{
+    //! copy regfile
+    //! NOTE: some cpu model may not recog instrs generated from a direct
+    //> struct copy operation, so call memcpy instead
+    memcpy(&dst->user_regs, &src->user_regs, sizeof(user_context_t));
+
+    //! sche attrs
+    dst->priority = src->priority;
+    //! FIXME: whether to inherit the parent ticks or not?
+    dst->ticks /*= src->ticks*/ = dst->priority;
+
+    //! copy page mem, simply alloc & copy
+    page_node_t *node = src->page_list;
+    u8 pgbuf[PGSIZE] = {};
+    DISABLE_INT();
+    while (node != NULL) {
+        do {
+            //! skip invalid addr
+            if (node->laddr == -1) { break; }
+            //! skip kernel mem
+            //! NOTE: not necessary actually (maybe, i'm not sure)
+            if (node->laddr >= K_PHY2LIN(0) && node->laddr < K_PHY2LIN(128 * MB)) { break; }
+            lin_mapping_phy(dst->cr3, &dst->page_list, node->laddr, -1, PTE_P | PTE_U | PTE_W);
+            //! copy page mem via temp buffer
+            //! NOTE: origin cr3 is from src
+            memcpy(pgbuf, (void*)node->laddr, PGSIZE);
+            lcr3(dst->cr3);
+            //! NOTE: laddr is the same
+            memcpy((void*)node->laddr, pgbuf, PGSIZE);
+            lcr3(src->cr3);
+        } while (0);
+        node = node->nxt;
+    }
+    ENABLE_INT();
+
+    //! copy kern stack -> conf kern stack & regfile
+
+    //! NOTE: well, I have absolutely no idea how to copy the kernel stack, so I'm
+    //> just going to lay out an execution flow and forget about the kernal fork.
+    //> I think it would be better to separate user-mode fork and kernel-mode fork
+    //> into two distinct implementations.
+
+    //! detailed execution flow
+    //! 1 schedule
+    //! 2 switch_kern_context
+    //! 2.1 switch_kern_context.inner_switch
+    //! 2.2 push kern_regs of the old proc to its own kern stack
+    //! 2.3 pop kern_regs of the new proc from its own kern stack
+    //! 2.4 ret ~ jmp restart
+    //! 3 restart
+    //! 3.1 esp <- &user_regs
+    //! 3.2 pop user_regs.{ gs, fs, es, ds }
+    //! 3.3 pop user_regs.{ edi, esi, ebp, esp (ignore), ebx, edx, ecx, eax }
+    //! 3.4 add esp, 4 ~ skip user_regs.retaddr
+    //! 3.5 iret ~ pop user_regs.{ eip, cs, eflags } ~ continue at eip
+
+    dst->kern_regs.esp = (u32)((void*)dst + KERN_STACKSIZE - 8);
+    ((u32*)dst->kern_regs.esp)[0] = (u32)restart;   //<! direct jmp to restart in switch_kern_context
+    ((u32*)dst->kern_regs.esp)[1] = (u32)dst;       //<! new esp for restart
+    dst->user_regs.eflags = 0x1202;
+}
+
+static void join_proc_son(pcb_t *p_fa, pcb_t *p_ch)
+{
+    //! NOTE: assume that p_ch is an orphan proc
+    if (p_ch->fork_tree.sons == NULL) {
+        p_ch->fork_tree.sons = (son_node_t*)kmalloc(sizeof(son_node_t));
+        memset(p_ch->fork_tree.sons, 0, sizeof(son_node_t));
+        p_ch->fork_tree.sons->p_son = p_ch;
+    } else {
+        son_node_t *node = p_ch->fork_tree.sons;
+        while (node->nxt != NULL) {
+            node = node->nxt;
+        }
+        son_node_t *son = (son_node_t*)kmalloc(sizeof(son_node_t));
+        son->pre = node;
+        son->nxt = NULL;
+        son->p_son = p_ch;
+        node->nxt = son;
+    }
+    p_ch->fork_tree.p_fa = p_fa;
+    p_ch->fork_tree.sons = NULL;
+}
 
 ssize_t
 kern_fork(pcb_t *p_fa)
 {
-	// 这可能是你第一次实现一个比较完整的功能，你可能会比较畏惧
-	// 但是放心，别怕，先别想自己要实现一个这么大的东西而毫无思路
-	// 这样你在焦虑的同时也在浪费时间，就跟你在实验五中被页表折磨一样
-	// 人在触碰到未知的时候总是害怕的，这是天性，所以请你先冷静下来
-	// fork系统调用会一步步引导你写出来，不会让你本科造火箭的
-	panic("Unimplement! CALM DOWN!");
-	
-	// 推荐是边写边想，而不是想一车然后写，这样非常容易计划赶不上变化
+    int retval = 0;
+    do {
+        //! lock parent
+        while (xchg(&p_fa->lock, 1) == 1) { schedule(); }
 
-	// fork的第一步你需要找一个空闲（IDLE）的进程作为你要fork的子进程
-	panic("Unimplement! find a idle process");
+        //! pick an available pcb
+        proc_t *child = (proc_t*)alloc_pcb();
+        //! failed to fork: no res available
+        if (child == NULL) {
+            retval = -1;
+            break;
+        }
+        pcb_t *p_ch = &child->pcb;
 
-	// 再之后你需要做的是好好阅读一下pcb的数据结构，搞明白结构体中每个成员的语义
-	// 别光扫一遍，要搞明白这个成员到底在哪里被用到了，具体是怎么用的
-	// 可能exec和exit系统调用的代码能够帮助你对pcb的理解，不先理解好pcb你fork是无从下手的
-	panic("Unimplement! read pcb");
+        //! lock child
+        //! NOTE: the lock action is expected to be useless for an idle proc
+        while (xchg(&p_ch->lock, 1) == 1) { schedule(); }
 
-	// 在阅读完pcb之后终于可以开始fork工作了
-	// 本质上相当于将父进程的pcb内容复制到子进程pcb中
-	// 但是你需要想清楚，哪些应该复制到子进程，哪些不应该复制，哪些应该子进程自己初始化
-	// 其中有三个难点
-	// 1. 子进程"fork"的返回值怎么处理？（需要你对系统调用整个过程都掌握比较清楚，如果非常清晰这个问题不会很大）
-	// 2. 子进程内存如何复制？（别傻乎乎地复制父进程的cr3，本质上相当于与父进程共享同一块内存，
-	// 而共享内存肯定不符合fork的语义，这样一个进程写内存某块地方会影响到另一个进程，这个东西需要你自己思考如何复制父进程的内存）
-	// 3. 在fork结束后，肯定会调度到子进程，那么你怎么保证子进程能够正常进入用户态？
-	// （你肯定会觉得这个问题问的莫名其妙的，只能说你如果遇到那一块问题了就会体会到这个问题的重要性，
-	// 这需要你对调度整个过程都掌握比较清楚）
-	panic("Unimplement! copy pcb?");
+        //! init page table, kernel page only
+        init_pagetbl(p_ch);
+        //! NOTE: the given init_pagetbl impl switches cr3, so rollback here!
+        DISABLE_INT();
+        //! FIXME: is incoming cr3 really from p_fa?
+        lcr3(p_fa->cr3);
+	    ENABLE_INT();
 
-	// 别忘了维护进程树，将这对父子进程关系添加进去
-	panic("Unimplement! maintain process tree");
+        //! copy context
+        copy_pcb(p_fa, p_ch);
 
-	// 最后你需要将子进程的状态置为READY，说明fork已经好了，子进程准备就绪了
-	panic("Unimplement! change status to READY");
+        //! conf fork result
+        //! FIXME: unsafe pid assignment
+        p_ch->pid = p_fa->pid + 1;
+        //! NOTE: is it necessary to push it onto the kern stack?
+        //> in the current impl, as child proc directly return to
+        //> the prev user-mode eip, kern stack makes no effect on
+        //> the execution flow.
+        p_ch->user_regs.eax = 0; //<! fork retval for child
+        retval = p_ch->pid;      //<! fork retval for parent
 
-	// 在你写完fork代码时先别急着运行跑，先要对自己来个灵魂拷问
-	// 1. 上锁上了吗？所有临界情况都考虑到了吗？（永远要相信有各种奇奇怪怪的并发问题）
-	// 2. 所有错误情况都判断到了吗？错误情况怎么处理？（RTFM->`man 2 fork`）
-	// 3. 你写的代码真的符合fork语义吗？
-	panic("Unimplement! soul torture");
+        //! conf proc family tree
+        join_proc_son(p_fa, p_ch);
 
-	return 0;
+        //! finish fork & join child proc
+        p_ch->statu = READY;
+
+        //! unlock child & parent
+        xchg(&p_ch->lock, 0);
+	    xchg(&p_fa->lock, 0);
+    } while (0);
+    return retval;
 }
 
 ssize_t
