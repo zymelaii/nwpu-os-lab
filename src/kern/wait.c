@@ -10,19 +10,27 @@
 #include <kern/kmalloc.h>
 #include <kern/pmap.h>
 
-static son_node_t* find_zombie_proc(son_node_t *node) {
-	static u32 lock = 0;
-	while (xchg(&lock, 1) == 1) { schedule(); }
+static son_node_t* find_zombie_proc(son_node_t *node)
+{
+	static u32 lock_pool[16] = {};
+	assert(node->p_son->fork_tree.p_fa != NULL);
+	int index = ((proc_t*)node->p_son->fork_tree.p_fa - proc_table) % 16;
+	while (xchg(&lock_pool[index], 1) == 1) { schedule(); }
 	assert(node != NULL);
 	do {
-		if (node->p_son->statu == ZOMBIE) { break; }
+		if (node->p_son->statu == ZOMBIE) {
+			if (xchg(&node->p_son->lock, 1) == 0) {
+				break;
+			}
+		}
 		node = node->nxt;
 	} while (node != NULL);
-	xchg(&lock, 0);
+	xchg(&lock_pool[index], 0);
 	return node;
 }
 
-static void remove_proc_link(pcb_t *fa, son_node_t *son) {
+static void remove_proc_link(pcb_t *fa, son_node_t *son)
+{
 	assert(son != NULL);
 	assert(son->p_son != NULL);
 	son_node_t *pre = son->pre;
@@ -59,17 +67,29 @@ kern_wait(int *wstatus)
 			break;
 		}
 
+		//! NOTE: kern_wait is special for 0 proc since it will
+		//> share its lock with kern_exec, inner procedure of
+		//> kern_exec requires lock 0 proc which may be held by
+		//> kern_wait.
+		//> a very special condition is that in a round sche
+		//> between kern_wait and kern_exec, kern_wait depends on
+		//> kern_exec to ctor an unlocked zombie proc, while
+		//> kern_exec also requires the lock held by kern_wait to
+		//> continue the zombie ctor procedure. so there's a dead
+		//> lock now.
+		//> to avoid the case, disable int until the lock was
+		//> released so that when switch to kern_exec, lock is
+		//> always acquireable as long as it is used to be held by
+		//> kern_wait
+		DISABLE_INT();
+
+		//! find a zombine proc and try to lock it
 		node = find_zombie_proc(fa->fork_tree.sons);
 		if (node != NULL) {
-			//! check validity
-			while (xchg(&node->p_son->lock, 1) == 1) { schedule(); }
-			if (node->p_son->fork_tree.p_fa != fa) {
-				node = NULL;
-				xchg(&node->p_son->lock, 0);
-			} else {
-				break;
-			}
+			assert(node->p_son->fork_tree.p_fa == fa);
+			break;
 		}
+
 		//! sleep until awake
 		fa->statu = SLEEPING;
 		//! NOTE: the current proc can be waken up by an exited
@@ -79,6 +99,9 @@ kern_wait(int *wstatus)
 		//! NOTE: give up the lock since awake from child may
 		//> acquire the lock to modify proc statu
 		xchg(&fa->lock, 0);
+
+		ENABLE_INT();
+
 		schedule();
 		while (xchg(&fa->lock, 1) == 1) { schedule(); }
 	} while (1);
