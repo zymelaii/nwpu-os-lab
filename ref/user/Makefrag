@@ -1,0 +1,40 @@
+OBJDIRS		+= user
+
+USER_LIBSRCS:=	lib/printfmt.c		\
+		lib/string.c		\
+		lib/user/assert.c	\
+		lib/user/astart.asm	\
+		lib/user/stdio.c	\
+		lib/user/syscall.c	\
+
+USER_LIBOBJS	:= $(patsubst %.c, $(OBJDIR)/%.o, $(USER_LIBSRCS))
+USER_LIBOBJS	:= $(patsubst %.asm, $(OBJDIR)/%.o, $(USER_LIBOBJS))
+
+USER_SRCS   :=	user/testpid.c		\
+		user/testkey.c		\
+		user/delay.c		\
+		user/testfork.c		\
+		user/testwait.c		\
+		user/repeater.c		\
+		user/shell.c		\
+		user/initproc.c		\
+		user/forkbomb.c		\
+		user/firework.bin	\
+
+USER_OBJS	:= $(patsubst %.c, $(OBJDIR)/%.o, $(USER_SRCS))
+
+USER_BINS	:= $(patsubst %.bin, $(OBJDIR)/%.bin, $(USER_SRCS))
+USER_BINS	:= $(patsubst %.c, $(OBJDIR)/%.bin, $(USER_BINS))
+
+$(OBJDIR)/user/%.o: user/%.c $(OBJDIR)/.vars.CFLAGS
+	@echo + cc $<
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/user/firework.bin: lib/user/firework.bin
+	@mkdir -p $(@D)
+	@cp $< $(@D)
+
+$(OBJDIR)/user/%.bin: $(OBJDIR)/user/%.o $(USER_LIBOBJS) $(OBJDIR)/.vars.LDFLAGS
+	@echo + ld $@
+	@$(LD) $(LDFLAGS) -o $@ $< $(USER_LIBOBJS) $(GCC_LIB)
