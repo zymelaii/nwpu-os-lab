@@ -13,11 +13,28 @@
 extern void lin_mapping_phy(
     u32 cr3, page_node_t **page_list, uintptr_t laddr, phyaddr_t paddr, u32 pte_flag);
 
+static u32 get_next_pid()
+{
+    static u32 lock = 0;
+    static u32 next_pid = 1;
+    //! WARNING: pid must be declared before schedule
+    u32 pid = -1;
+    while (xchg(&lock, 1) == 1) { schedule(); }
+    pid = next_pid++;
+    xchg(&lock, 0);
+    assert(pid > 0 && "pid out of range");
+    return pid;
+}
+
 static pcb_t *alloc_pcb()
 {
     for (int i = 0; i < PCB_SIZE; ++i) {
-        if (proc_table[i].pcb.statu == IDLE) {
-            return &proc_table[i].pcb;
+        pcb_t *pcb = &proc_table[i].pcb;
+        //! NOTE: a locked idle proc can be a potential availabel pcb,
+        //> but it's too hard decide, so simply ignore it. this strategy
+        //> can cause an errno -EAGAIN even if pcb pool is not fully used
+        if (pcb->statu == IDLE && pcb->lock == 0) {
+            return pcb;
         }
     }
     return NULL;
@@ -32,8 +49,7 @@ static void copy_pcb(pcb_t *src, pcb_t *dst)
 
     //! sche attrs
     dst->priority = src->priority;
-    //! FIXME: whether to inherit the parent ticks or not?
-    dst->ticks /*= src->ticks*/ = dst->priority;
+    dst->ticks = dst->priority;
 
     //! copy page mem, simply alloc & copy
     page_node_t *node = src->page_list;
@@ -89,23 +105,22 @@ static void copy_pcb(pcb_t *src, pcb_t *dst)
 static void join_proc_son(pcb_t *p_fa, pcb_t *p_ch)
 {
     //! NOTE: assume that p_ch is an orphan proc
-    if (p_fa->fork_tree.sons == NULL) {
-        p_fa->fork_tree.sons = (son_node_t*)kmalloc(sizeof(son_node_t));
-        memset(p_fa->fork_tree.sons, 0, sizeof(son_node_t));
-        p_fa->fork_tree.sons->p_son = p_ch;
-    } else {
-        son_node_t *node = p_fa->fork_tree.sons;
-        while (node->nxt != NULL) {
-            node = node->nxt;
-        }
-        son_node_t *son = (son_node_t*)kmalloc(sizeof(son_node_t));
-        son->pre = node;
-        son->nxt = NULL;
-        son->p_son = p_ch;
-        node->nxt = son;
-    }
+    son_node_t *son = (son_node_t*)kmalloc(sizeof(son_node_t));
+    son->pre = NULL;
+    son->nxt = NULL;
+    son->p_son = p_ch;
+
     p_ch->fork_tree.p_fa = p_fa;
     p_ch->fork_tree.sons = NULL;
+
+    if (p_fa->fork_tree.sons != NULL) {
+        son_node_t *node = p_fa->fork_tree.sons;
+        son->nxt = node;
+        while (xchg(&node->p_son->lock, 1) == 1) { schedule(); }
+        node->pre = son;
+        xchg(&node->p_son->lock, 0);
+    }
+    p_fa->fork_tree.sons = son;
 }
 
 ssize_t
@@ -117,18 +132,32 @@ kern_fork(pcb_t *p_fa)
     while (xchg(&p_fa->lock, 1) == 1) { schedule(); }
 
     do {
-        //! pick an available pcb
-        proc_t *child = (proc_t*)alloc_pcb();
-        //! failed to fork: no res available
-        if (child == NULL) {
-            retval = -EAGAIN;
-            break;
+        pcb_t *p_ch = NULL;
+        while (1) {
+            //! pick an available pcb
+            proc_t *child = (proc_t*)alloc_pcb();
+            //! failed to fork: no res available
+            if (child == NULL) {
+                retval = -EAGAIN;
+                break;
+            }
+            //! lock child
+            //! NOTE: the lock action is expected to be useless for an idle proc,
+            //> but take account of maintaining the proc tree, it's necessary
+            //! NOTE: give up if failed to lock immediately to ensure sequential
+            //> execution flow, it is helpful to avoid using an outdated pcb
+            //> in the following fork procedure for the child
+            if (xchg(&child->pcb.lock, 1) == 1) {
+                schedule();
+            } else {
+                p_ch = &child->pcb;
+                assert(p_ch->statu == IDLE);
+                break;
+            }
         }
-        pcb_t *p_ch = &child->pcb;
+        if (p_ch == NULL) { break; }
 
-        //! lock child
-        //! NOTE: the lock action is expected to be useless for an idle proc
-        while (xchg(&p_ch->lock, 1) == 1) { schedule(); }
+        //DISABLE_INT();
 
         //! init page table, kernel page only
         init_pagetbl(p_ch);
@@ -142,8 +171,7 @@ kern_fork(pcb_t *p_fa)
         copy_pcb(p_fa, p_ch);
 
         //! conf fork result
-        //! FIXME: unsafe pid assignment
-        p_ch->pid = p_fa->pid + 1;
+        p_ch->pid = get_next_pid();
         //! NOTE: is it necessary to push it onto the kern stack?
         //> in the current impl, as child proc directly return to
         //> the prev user-mode eip, kern stack makes no effect on
@@ -159,6 +187,8 @@ kern_fork(pcb_t *p_fa)
 
         //! unlock child
         xchg(&p_ch->lock, 0);
+
+        //ENABLE_INT();
     } while (0);
 
     //! unlock parent
