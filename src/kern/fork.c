@@ -112,10 +112,11 @@ ssize_t
 kern_fork(pcb_t *p_fa)
 {
     int retval = 0;
-    do {
-        //! lock parent
-        while (xchg(&p_fa->lock, 1) == 1) { schedule(); }
 
+    //! lock parent
+    while (xchg(&p_fa->lock, 1) == 1) { schedule(); }
+
+    do {
         //! pick an available pcb
         proc_t *child = (proc_t*)alloc_pcb();
         //! failed to fork: no res available
@@ -156,10 +157,13 @@ kern_fork(pcb_t *p_fa)
         //! finish fork & join child proc
         p_ch->statu = READY;
 
-        //! unlock child & parent
+        //! unlock child
         xchg(&p_ch->lock, 0);
-	    xchg(&p_fa->lock, 0);
     } while (0);
+
+    //! unlock parent
+    xchg(&p_fa->lock, 0);
+
     return retval;
 }
 
