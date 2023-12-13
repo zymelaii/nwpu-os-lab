@@ -149,6 +149,10 @@ kern_fork(pcb_t *p_fa)
             //> in the following fork procedure for the child
             if (xchg(&child->pcb.lock, 1) == 1) {
                 schedule();
+            } else if (child->pcb.statu != IDLE) {
+                //! FIXME: unexpected branch
+                xchg(&child->pcb.lock, 0);
+                schedule();
             } else {
                 p_ch = &child->pcb;
                 assert(p_ch->statu == IDLE);
@@ -156,8 +160,6 @@ kern_fork(pcb_t *p_fa)
             }
         }
         if (p_ch == NULL) { break; }
-
-        //DISABLE_INT();
 
         //! init page table, kernel page only
         init_pagetbl(p_ch);
@@ -187,8 +189,6 @@ kern_fork(pcb_t *p_fa)
 
         //! unlock child
         xchg(&p_ch->lock, 0);
-
-        //ENABLE_INT();
     } while (0);
 
     //! unlock parent
