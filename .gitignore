@@ -63,3 +63,6 @@ dkms.conf
 obj/
 .lock
 *.img
+
+!/ref/lib/**/*.o
+!/ref/lib/**/*.bin
