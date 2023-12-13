@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include <x86.h>
+#include <errno.h>
 #include <kern/pmap.h>
 #include <kern/kmalloc.h>
 #include <kern/sche.h>
@@ -88,12 +89,12 @@ static void copy_pcb(pcb_t *src, pcb_t *dst)
 static void join_proc_son(pcb_t *p_fa, pcb_t *p_ch)
 {
     //! NOTE: assume that p_ch is an orphan proc
-    if (p_ch->fork_tree.sons == NULL) {
-        p_ch->fork_tree.sons = (son_node_t*)kmalloc(sizeof(son_node_t));
-        memset(p_ch->fork_tree.sons, 0, sizeof(son_node_t));
-        p_ch->fork_tree.sons->p_son = p_ch;
+    if (p_fa->fork_tree.sons == NULL) {
+        p_fa->fork_tree.sons = (son_node_t*)kmalloc(sizeof(son_node_t));
+        memset(p_fa->fork_tree.sons, 0, sizeof(son_node_t));
+        p_fa->fork_tree.sons->p_son = p_ch;
     } else {
-        son_node_t *node = p_ch->fork_tree.sons;
+        son_node_t *node = p_fa->fork_tree.sons;
         while (node->nxt != NULL) {
             node = node->nxt;
         }
@@ -119,7 +120,7 @@ kern_fork(pcb_t *p_fa)
         proc_t *child = (proc_t*)alloc_pcb();
         //! failed to fork: no res available
         if (child == NULL) {
-            retval = -1;
+            retval = -EAGAIN;
             break;
         }
         pcb_t *p_ch = &child->pcb;
