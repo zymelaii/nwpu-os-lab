@@ -7,8 +7,14 @@
 #include <kern/sche.h>
 #include <kern/trap.h>
 
+#define PHYMEM_BEGIN (96 * MB)
+#define PHYMEM_END (128 * MB)
+
 static u32 phy_malloc_4k_lock;
-static phyaddr_t phy_malloc_4k_p = 96 * MB;
+static phyaddr_t phy_malloc_4k_p = PHYMEM_BEGIN;
+
+#define PHYMEM_BITMAP_SIZE (((PHYMEM_END - PHYMEM_BEGIN) / PGSIZE + 31) / 32)
+static u32 phy_mem_bitmap[PHYMEM_BITMAP_SIZE];
 
 /*
  * 释放物理页面，这里并没有为你实现好free_4k的代码，
@@ -19,6 +25,14 @@ void
 phy_free_4k(phyaddr_t paddr)
 {
 	assert(paddr % PGSIZE == 0);
+	assert(paddr >= PHYMEM_BEGIN && paddr < PHYMEM_END);
+	u32 index = (paddr - PHYMEM_BEGIN) / PGSIZE;
+	u32 i = index / 32;
+	u32 j = index % 32;
+	assert(i < PHYMEM_BITMAP_SIZE);
+	while(xchg(&phy_malloc_4k_lock, 1) == 1) { schedule(); }
+	phy_mem_bitmap[i] &= ~(1 << j);
+	xchg(&phy_malloc_4k_lock, 0);
 }
 /*
  * 分配物理页面，每次分配4kb，一页
@@ -29,11 +43,24 @@ phy_malloc_4k(void)
 {
 	while(xchg(&phy_malloc_4k_lock, 1) == 1)
 		schedule();
-	
-	assert(phy_malloc_4k_p < 128 * MB);
-	phyaddr_t paddr = phy_malloc_4k_p;
-	phy_malloc_4k_p += PGSIZE;
-free:
+
+	phyaddr_t paddr = 0;
+	for (int i = 0; i < PHYMEM_BITMAP_SIZE; ++i) {
+		if (phy_mem_bitmap[i] == ~(u32)0) { continue; }
+		for (int j = 0; j < 32; ++j) {
+			if (phy_mem_bitmap[i] & (1 << j)) { continue; }
+			phy_mem_bitmap[i] |= 1 << j;
+			paddr = (i * 32 + j) * PGSIZE + PHYMEM_BEGIN;
+			break;
+		}
+		if (paddr != 0) { break; }
+	}
+
+	if (!(paddr >= PHYMEM_BEGIN && paddr < PHYMEM_END)) {
+		kprintf("%x %x %x\n", paddr, PHYMEM_BEGIN, PHYMEM_END);
+	}
+	assert(paddr >= PHYMEM_BEGIN && paddr < PHYMEM_END);
+
 	xchg(&phy_malloc_4k_lock, 0);
 	return paddr;
 }
