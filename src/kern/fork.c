@@ -31,7 +31,7 @@ static pcb_t *alloc_pcb()
     for (int i = 0; i < PCB_SIZE; ++i) {
         pcb_t *pcb = &proc_table[i].pcb;
         //! NOTE: a locked idle proc can be a potential availabel pcb,
-        //> but it's too hard decide, so simply ignore it. this strategy
+        //> but it's too hard to decide, so simply ignore it. this strategy
         //> can cause an errno -EAGAIN even if pcb pool is not fully used
         if (pcb->statu == IDLE && pcb->lock == 0) {
             return pcb;

@@ -56,9 +56,6 @@ phy_malloc_4k(void)
 		if (paddr != 0) { break; }
 	}
 
-	if (!(paddr >= PHYMEM_BEGIN && paddr < PHYMEM_END)) {
-		kprintf("%x %x %x\n", paddr, PHYMEM_BEGIN, PHYMEM_END);
-	}
 	assert(paddr >= PHYMEM_BEGIN && paddr < PHYMEM_END);
 
 	xchg(&phy_malloc_4k_lock, 0);
