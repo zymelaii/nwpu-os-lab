@@ -47,14 +47,14 @@ QEMU_FLAGS += -display curses
 GDB_FLAGS := -q -nx
 GDB_FLAGS += -x  '../misc/gdb/connect-qemu.gdb'
 GDB_FLAGS += -x  '../misc/gdb/instr-level.gdb'
-GDB_FLAGS += -ix '../misc/gdb/gdb_init_real_mode.txt'
+#GDB_FLAGS += -ix '../misc/gdb/gdb_init_real_mode.txt'
 GDB_FLAGS += -ex 'set pagination off'
 GDB_FLAGS += -ex 'set confirm off'
 GDB_FLAGS += -ex 'set disassembly-flavor att'
 GDB_FLAGS += -ex 'layout asm'
 GDB_FLAGS += -ex 'tui reg general'
 GDB_FLAGS += -ex 'connect-qemu'
-GDB_FLAGS += -ex 'b *0x7c00'
+#GDB_FLAGS += -ex 'b *0x7c00'
 
 include boot/Makefrag
 include lib/Makefrag
